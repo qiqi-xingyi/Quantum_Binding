@@ -39,7 +39,7 @@ def main(instance,token):
     print("Ligand:", ligand_info)
 
     # 3) create PySCF Mole
-    pdb_path = "./data_set/data/2_benchmark_binidng_sites/1c5z/1c5z_Binding_mode.pdb"
+    pdb_path = "./data_set/1c5z/1c5z_Binding_mode.pdb"
 
     builder = PDBSystemBuilder(pdb_path, charge=1, spin=0, basis="sto3g")
     mol = builder.build_mole()
@@ -98,7 +98,7 @@ def main(instance,token):
     )
 
     # 8) VQE
-    solver = QCVQESolver(service, shots=100, min_qubit_num=30, maxiter=300, optimization_level=3)
+    solver = QCVQESolver(service, shots=800, min_qubit_num=30, maxiter=200, optimization_level=3)
     energies, best_params = solver.run_vqe(qubit_op, ansatz)
     final_energy = energies[-1]
     print("Final E:", final_energy)
