@@ -125,6 +125,6 @@ def main(instance,token):
 if __name__=="__main__":
 
     instance = ''
-    token=''
+    token = ''
 
     main(instance,token)
