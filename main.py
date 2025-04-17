@@ -98,7 +98,7 @@ def main(instance,token):
     )
 
     # 8) VQE
-    solver = QCVQESolver(service, shots=800, min_qubit_num=30, maxiter=200, optimization_level=3)
+    solver = QCVQESolver(service, shots=400, min_qubit_num=30, maxiter=200, optimization_level=3)
     energies, best_params = solver.run_vqe(qubit_op, ansatz)
     final_energy = energies[-1]
     print("Final E:", final_energy)
