@@ -46,9 +46,9 @@ def main():
 
     # Print results
     print("=== Individual Energies ===")
-    print(f"Complex : {E_complex:.6f} Hartree  |  {E_complex_kcal:.2f} kcal/mol")
-    print(f"Ligand  : {E_ligand:.6f} Hartree  |  {E_ligand_kcal:.2f} kcal/mol")
-    print(f"Protein : {E_protein:.6f} Hartree  |  {E_protein_kcal:.2f} kcal/mol")
+    print(f"Complex : {E_complex:.6f} Hartree  |")
+    print(f"Ligand  : {E_ligand:.6f} Hartree  |")
+    print(f"Protein : {E_protein:.6f} Hartree  |")
     print()
     print("=== Binding Energy ===")
     print(f"ΔE_bind : {E_bind_hartree:.6f} Hartree  |  {E_bind_kcal:.2f} kcal/mol")
