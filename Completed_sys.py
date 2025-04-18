@@ -105,14 +105,14 @@ def main():
     print("Final E:", final_energy)
 
     # 9) save result
-    final_energy_path = os.path.join("results_projection", "combined_energy.txt")
+    final_energy_path = os.path.join("results_projection", "combined_final_energy.txt")
     with open(final_energy_path, "w") as f:
         f.write(str(final_energy) + "\n")
     print(f"Final energy saved to {final_energy_path}")
 
     os.makedirs("results_projection", exist_ok=True)
 
-    with open("results_projection/energy.csv","w",newline="") as cf:
+    with open("results_projection/combind_energy.csv", "w", newline="") as cf:
         import csv
         writer=csv.writer(cf)
         writer.writerow(["Iter","Energy"])
