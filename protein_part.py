@@ -41,7 +41,7 @@ def main(instance,token):
     # 3) create PySCF Mole
     pdb_path = "./data_set/1c5z/protein_part.pdb"
 
-    builder = PDBSystemBuilder(pdb_path, charge=1, spin=0, basis="sto3g")
+    builder = PDBSystemBuilder(pdb_path, charge=1, spin=1, basis="sto3g")
     mol = builder.build_mole()
 
     # 4) run SCF + active space selection
@@ -126,5 +126,4 @@ if __name__=="__main__":
 
     instance = ''
     token=''
-
     main(instance,token)
