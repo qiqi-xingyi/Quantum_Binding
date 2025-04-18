@@ -105,7 +105,7 @@ def main():
     print("Final E:", final_energy)
 
     # 9) save result
-    final_energy_path = os.path.join("results_projection", "final_energy.txt")
+    final_energy_path = os.path.join("results_projection", "combined_energy.txt")
     with open(final_energy_path, "w") as f:
         f.write(str(final_energy) + "\n")
     print(f"Final energy saved to {final_energy_path}")
