@@ -4,7 +4,12 @@
 # @Email : yzhan135@kent.edu
 # @File:caculate_binding_E.py
 
-import argparse
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @time    : 2025-04-18 12:30
+# @author  : Yuqi Zhang
+# @email   : yzhan135@kent.edu
+# @file    : compute_binding_energy.py
 
 # Conversion factor: 1 Hartree = 627.509 kcal/mol
 HARTREE_TO_KCAL = 627.509
@@ -20,32 +25,15 @@ def hartree_to_kcal(value_hartree):
     return value_hartree * HARTREE_TO_KCAL
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Extract Hartree energies from three files and compute binding energy."
-    )
-    parser.add_argument(
-        "--complex", "-c",
-        required=True,
-        default='result_projection/combined_final_energy.txt',
-        help="Path to the text file containing the complex (system) energy in Hartree."
-    )
-    parser.add_argument(
-        "--ligand", "-l",
-        required=True,
-        default='result_projection/lignad_final_energy.txt',
-        help="Path to the text file containing the ligand energy in Hartree."
-    )
-    parser.add_argument(
-        "--protein", "-p",
-        required=True,
-        default='result_projection/protein_final_energy.txt',
-        help="Path to the text file containing the protein energy in Hartree."
-    )
-    args = parser.parse_args()
+    # Fixed file paths
+    complex_path = './results_projection/combined_final_energy.txt'
+    ligand_path  = './results_projection/ligand_final_energy.txt'
+    protein_path = './results_projection/protein_final_energy.txt'
 
-    E_complex = read_hartree(args.complex)
-    E_ligand  = read_hartree(args.ligand)
-    E_protein = read_hartree(args.protein)
+    # Read energies (Hartree)
+    E_complex = read_hartree(complex_path)
+    E_ligand  = read_hartree(ligand_path)
+    E_protein = read_hartree(protein_path)
 
     # Compute binding energy in Hartree
     E_bind_hartree = E_complex - (E_ligand + E_protein)
@@ -67,4 +55,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
