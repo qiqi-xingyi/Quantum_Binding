@@ -4,13 +4,6 @@
 # @Email : yzhan135@kent.edu
 # @File:caculate_binding_E.py
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# @time    : 2025-04-18 12:30
-# @author  : Yuqi Zhang
-# @email   : yzhan135@kent.edu
-# @file    : compute_binding_energy.py
-
 # Conversion factor: 1 Hartree = 627.509 kcal/mol
 HARTREE_TO_KCAL = 627.509
 
