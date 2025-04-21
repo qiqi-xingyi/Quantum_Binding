@@ -98,7 +98,7 @@ def main(instance,token):
     )
 
     # 8) VQE
-    solver = QCVQESolver(service, shots=400, min_qubit_num=30, maxiter=50, optimization_level=3)
+    solver = QCVQESolver(service, shots=400, min_qubit_num=30, maxiter=500, optimization_level=3)
     energies, best_params = solver.run_vqe(qubit_op, ansatz)
     final_energy = energies[-1]
     print("Final E:", final_energy)
@@ -124,6 +124,6 @@ def main(instance,token):
 
 if __name__=="__main__":
 
-    instance = 'ibm-q-ccf/qradle-catalyzer/qradle-catalyzer'
-    token='98da9815dd1fbbe8d3010882e9a317f9495f2d61652ec33f19429c2136da25975a0728843211b0b389d731778c600c27e30b5edfeee39c318793a925668dbfae'
+    instance = ''
+    token=''
     main(instance,token)
