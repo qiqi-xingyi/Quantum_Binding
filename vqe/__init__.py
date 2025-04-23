@@ -6,3 +6,4 @@
 
 from .vqe import VQE
 from .measure import StateCalculator
+from .vqesolver import VQE_Solver
