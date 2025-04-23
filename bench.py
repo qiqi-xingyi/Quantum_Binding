@@ -7,7 +7,7 @@
 import os
 import json
 import numpy as np
-import warnings # 用于更明显的警告
+import warnings
 
 # Qiskit Imports
 from qiskit.transpiler import Target

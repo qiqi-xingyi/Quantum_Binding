@@ -1,0 +1,232 @@
+urllib3.exceptions.ResponseError: too many 503 error responses
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  [Previous line repeated 2 more times]
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 934, in urlopen
+    retries = retries.increment(method, url, response=response, _pool=self)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 126, in increment
+    return super().increment(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/jobs/d03byqtrxz8g008fzgr0?exclude_params=true (Caused by ResponseError('too many 503 error responses'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 328, in request
+    response = super().request(method, final_url, headers=headers, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/adapters.py", line 691, in send
+    raise RetryError(e, request=request)
+requests.exceptions.RetryError: HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/jobs/d03byqtrxz8g008fzgr0?exclude_params=true (Caused by ResponseError('too many 503 error responses'))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/Quantum_Binding/utils/qc_vqe_solver.py", line 49, in cost_func
+    result = estimator.run(pubs=[pub]).result()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/runtime_job_v2.py", line 133, in result
+    self.wait_for_final_state(timeout=timeout)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/runtime_job_v2.py", line 253, in wait_for_final_state
+    status = self.status()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/runtime_job_v2.py", line 170, in status
+    self._set_status_and_error_message()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/base_runtime_job.py", line 219, in _set_status_and_error_message
+    response = self._api_client.job_get(job_id=self.job_id())
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/clients/runtime.py", line 112, in job_get
+    response = self._api.program_job(job_id).get(exclude_params=exclude_params)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/rest/program_job.py", line 59, in get
+    return self.session.get(self.get_url("self"), params=payload).json(cls=RuntimeDecoder)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 602, in get
+    return self.request("GET", url, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 351, in request
+    raise RequestsApiError(message, status_code) from ex
+qiskit_ibm_runtime.api.exceptions.RequestsApiError: "HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/jobs/d03byqtrxz8g008fzgr0?exclude_params=true (Caused by ResponseError('too many 503 error responses'))"
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 329, in request
+    response.raise_for_status()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 503 Server Error: Service Unavailable for url: https://api.quantum.ibm.com/runtime/sessions/d03byqjnhqag008vj9m0
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/rest/runtime_session.py", line 77, in close
+    self.session.patch(url, json=payload)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 661, in patch
+    return self.request("PATCH", url, data=data, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 351, in request
+    raise RequestsApiError(message, status_code) from ex
+qiskit_ibm_runtime.api.exceptions.RequestsApiError: '503 Server Error: Service Unavailable for url: https://api.quantum.ibm.com/runtime/sessions/d03byqjnhqag008vj9m0. no healthy upstream'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/yangy9/Quantum_Binding/main.py", line 130, in <module>
+    main(instance,token)
+  File "/home/yangy9/Quantum_Binding/main.py", line 102, in main
+    energies, best_params = solver.run_vqe(qubit_op, ansatz)
+  File "/home/yangy9/Quantum_Binding/utils/qc_vqe_solver.py", line 56, in run_vqe
+    res = minimize(cost_func, x0, method="cobyla", options={'maxiter': self.maxiter})
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_minimize.py", line 719, in minimize
+    res = _minimize_cobyla(fun, x0, args, constraints, callback=callback,
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_cobyla_py.py", line 35, in wrapper
+    return func(*args, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_cobyla_py.py", line 278, in _minimize_cobyla
+    sf = _prepare_scalar_function(fun, x0, args=args, jac=_jac)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_optimize.py", line 288, in _prepare_scalar_function
+    sf = ScalarFunction(fun, x0, args, grad, hess,
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_differentiable_functions.py", line 166, in __init__
+    self._update_fun()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_differentiable_functions.py", line 262, in _update_fun
+    self._update_fun_impl()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_differentiable_functions.py", line 163, in update_fun
+    self.f = fun_wrapped(self.x)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/scipy/optimize/_differentiable_functions.py", line 145, in fun_wrapped
+    fx = fun(np.copy(x), *args)
+  File "/home/yangy9/Quantum_Binding/utils/qc_vqe_solver.py", line 49, in cost_func
+    result = estimator.run(pubs=[pub]).result()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/session.py", line 399, in __exit__
+    self.close()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/session.py", line 238, in close
+    self._service._api_client.close_session(self._session_id)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/clients/runtime.py", line 261, in close_session
+    self._api.runtime_session(session_id=session_id).close()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/rest/runtime_session.py", line 82, in close
+    raise IBMRuntimeError(f"Error closing session: {ex}")
+qiskit_ibm_runtime.exceptions.IBMRuntimeError: "Error closing session: '503 Server Error: Service Unavailable for url: https://api.quantum.ibm.com/runtime/sessions/d03byqjnhqag008vj9m0. no healthy upstream'"
+urllib3.exceptions.ResponseError: too many 503 error responses
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  [Previous line repeated 2 more times]
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 934, in urlopen
+    retries = retries.increment(method, url, response=response, _pool=self)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 126, in increment
+    return super().increment(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/backends?provider=ibm-q-ccf%2Fcleveland-access%2Fcheng-drug-disco (Caused by ResponseError('too many 503 error responses'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 328, in request
+    response = super().request(method, final_url, headers=headers, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/adapters.py", line 691, in send
+    raise RetryError(e, request=request)
+requests.exceptions.RetryError: HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/backends?provider=ibm-q-ccf%2Fcleveland-access%2Fcheng-drug-disco (Caused by ResponseError('too many 503 error responses'))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/Quantum_Binding/protein_part.py", line 129, in <module>
+    main(instance,token)
+  File "/home/yangy9/Quantum_Binding/protein_part.py", line 28, in main
+    service = QiskitRuntimeService(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/qiskit_runtime_service.py", line 175, in __init__
+    set(sum([hgp.backends for hgp in self._hgps.values()], []))
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/qiskit_runtime_service.py", line 175, in <listcomp>
+    set(sum([hgp.backends for hgp in self._hgps.values()], []))
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/hub_group_project.py", line 60, in backends
+    self._backends = self._discover_remote_backends()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/hub_group_project.py", line 78, in _discover_remote_backends
+    backends = self._runtime_client.list_backends(self.name)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/clients/runtime.py", line 284, in list_backends
+    return self._api.backends(hgp=hgp)["devices"]
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/rest/runtime.py", line 229, in backends
+    return self.session.get(url, params=params, timeout=timeout).json()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 602, in get
+    return self.request("GET", url, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 351, in request
+    raise RequestsApiError(message, status_code) from ex
+qiskit_ibm_runtime.api.exceptions.RequestsApiError: "HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/backends?provider=ibm-q-ccf%2Fcleveland-access%2Fcheng-drug-disco (Caused by ResponseError('too many 503 error responses'))"
+urllib3.exceptions.ResponseError: too many 503 error responses
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 944, in urlopen
+    return self.urlopen(
+  [Previous line repeated 2 more times]
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/connectionpool.py", line 934, in urlopen
+    retries = retries.increment(method, url, response=response, _pool=self)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 126, in increment
+    return super().increment(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/backends?provider=ibm-q-ccf%2Fcleveland-access%2Fcheng-drug-disco (Caused by ResponseError('too many 503 error responses'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 328, in request
+    response = super().request(method, final_url, headers=headers, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/adapters.py", line 691, in send
+    raise RetryError(e, request=request)
+requests.exceptions.RetryError: HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/backends?provider=ibm-q-ccf%2Fcleveland-access%2Fcheng-drug-disco (Caused by ResponseError('too many 503 error responses'))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/yangy9/Quantum_Binding/ligand_part.py", line 130, in <module>
+    main(instance,token)
+  File "/home/yangy9/Quantum_Binding/ligand_part.py", line 28, in main
+    service = QiskitRuntimeService(
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/qiskit_runtime_service.py", line 175, in __init__
+    set(sum([hgp.backends for hgp in self._hgps.values()], []))
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/qiskit_runtime_service.py", line 175, in <listcomp>
+    set(sum([hgp.backends for hgp in self._hgps.values()], []))
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/hub_group_project.py", line 60, in backends
+    self._backends = self._discover_remote_backends()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/hub_group_project.py", line 78, in _discover_remote_backends
+    backends = self._runtime_client.list_backends(self.name)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/clients/runtime.py", line 284, in list_backends
+    return self._api.backends(hgp=hgp)["devices"]
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/rest/runtime.py", line 229, in backends
+    return self.session.get(url, params=params, timeout=timeout).json()
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/requests/sessions.py", line 602, in get
+    return self.request("GET", url, **kwargs)
+  File "/home/yangy9/beegfs/yangy9/miniforge3/envs/abeta-quantum/lib/python3.9/site-packages/qiskit_ibm_runtime/api/session.py", line 351, in request
+    raise RequestsApiError(message, status_code) from ex
+qiskit_ibm_runtime.api.exceptions.RequestsApiError: "HTTPSConnectionPool(host='api.quantum.ibm.com', port=443): Max retries exceeded with url: /runtime/backends?provider=ibm-q-ccf%2Fcleveland-access%2Fcheng-drug-disco (Caused by ResponseError('too many 503 error responses'))"
