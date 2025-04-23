@@ -1,0 +1,2 @@
+Id,SMILES,Protein,Ligand,Heavy Atoms,Mol. weight [g/mol],Exp. Affinity,dG [kcal/mol] mean,dG [kcal/mol] std,Lig. Efficiency [kcal/mol] mean,Lig. Efficiency [kcal/mol] std,Pic50 mean,Pic50 std,Pkd mean,Pkd std
+0_,NC(N)C1CCCCC1,protein.pdb,0__processed.sdf,9,128.21899999999994,None,-2.410178955112185,-0.48034465540725196,-0.26779766167913166,-0.05337162837858355,1.7711478131158012,0.31400658967541606,1.7853177445275443,0.35581085585722366

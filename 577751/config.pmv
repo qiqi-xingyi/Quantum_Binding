@@ -1,0 +1,1 @@
+{"tables": [{"path": "results.csv", "options": {"hideColumns": ["protein", "ligand"], "onRowClick": [{"action": "loadFile", "column": ["protein", "ligand"]}]}}]}

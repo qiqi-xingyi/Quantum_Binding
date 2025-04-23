@@ -1,0 +1,456 @@
+
+#############
+Executing kdeep-1 <function main at 0x7f3ecb025630> on 2025-04-18 00:49
+ARGS:
+classifier_modelfile: null
+correlation_field: null
+dataset: null
+leave_hs: false
+modelfile: /data/in/512965/acebind2023_graphnet.zip
+no_gpu: false
+no_parallelism: true
+no_sdf_write: false
+outdir: /data/out
+pdb: /data/in/protein_part.pdb
+predicted_corr_field: predicted_pkd_mean
+scratchdir: /data/scratch
+sdf: /data/in/ligand.sdf
+#############
+Failed to find the pandas get_adjustment() function to patch
+Failed to patch pandas - PandasTools will have limited functionality
+2025-04-18 00:49:28,273 - kdeep.infer - INFO - Loading models
+2025-04-18 00:49:29,661 - matplotlib.font_manager - INFO - generated new fontManager
+2025-04-18 00:49:34,794 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=476-loss=0.000.ckpt`
+2025-04-18 00:49:34,796 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:34,796 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:34,797 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:34,798 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:34,798 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:34,798 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:34,798 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:34,798 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:34,798 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:34,798 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:34,867 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+/opt/conda/lib/python3.10/site-packages/torchmetrics/utilities/prints.py:43: UserWarning: Metric `SpearmanCorrcoef` will save all targets and predictions in the buffer. For large datasets, this may lead to large memory footprint.
+  warnings.warn(*args, **kwargs)  # noqa: B028
+2025-04-18 00:49:35,218 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=433-loss=0.000.ckpt`
+2025-04-18 00:49:35,219 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:35,220 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:35,221 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:35,222 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:35,237 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+2025-04-18 00:49:35,523 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=477-loss=0.001.ckpt`
+2025-04-18 00:49:35,525 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:35,525 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:35,526 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:35,527 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:35,527 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:35,527 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:35,527 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:35,540 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+2025-04-18 00:49:35,793 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=437-loss=0.001.ckpt`
+2025-04-18 00:49:35,795 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:35,795 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:35,796 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:35,808 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+2025-04-18 00:49:36,077 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=442-loss=0.000.ckpt`
+2025-04-18 00:49:36,079 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:36,079 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:36,080 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:36,081 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:36,081 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:36,081 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:36,081 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:36,081 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:36,081 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:36,096 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+2025-04-18 00:49:36,396 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=450-loss=0.000.ckpt`
+2025-04-18 00:49:36,397 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:36,398 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:36,399 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:36,400 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:36,414 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+2025-04-18 00:49:36,671 - pytorch_lightning.utilities.migration.utils - INFO - Lightning automatically upgraded your loaded checkpoint from v1.6.3 to v2.3.3. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../data/scratch/models/model-epoch=437-loss=0.000.ckpt`
+2025-04-18 00:49:36,672 - kdeep.model - INFO - Model parameters:
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   model_type: graph-network
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   num_filters: 64
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   num_interactions: 6
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   cutoff_lower: 0.0
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   cutoff_upper: 6
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   num_gaussians: 64
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   rbf_type: gauss
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   atom_filter: 92
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   max_z: 184
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   learning_rate: 0.00075
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   weight_decay: 0.0
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   scheduler_factor: 0.9
+2025-04-18 00:49:36,672 - kdeep.model - INFO -   label_types: ['pkd', 'pic50']
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   callbacks: None
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   mode: regressor
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   monitor_metric: loss
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   topk: 1
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   multi_gpu: False
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   monitor_mode: min
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   num_heads: 8
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   scheduler: plateau
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   act_fn: silu
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   trainable_rbf: False
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   deltadelta: False
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   neighbor_embedding: False
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   scheduler_patience: 26000
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   min_lr: 1e-06
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   lr_warmup_steps: 80000
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   num_linears_tensor: 2
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   num_linears_scalar: 2
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   return_vecs: True
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   loop: True
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   smoothing: False
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   ema_alpha_y: 0.01
+2025-04-18 00:49:36,673 - kdeep.model - INFO -   scheduler_interval: step
+2025-04-18 00:49:36,674 - kdeep.model - INFO -   so3: False
+2025-04-18 00:49:36,674 - kdeep.model - INFO -   no_corr_metrics: False
+2025-04-18 00:49:36,674 - kdeep.model - INFO - Max number of neighbors: 928
+2025-04-18 00:49:36,686 - kdeep.model - INFO - Model:
+Model(
+  (model): CustomOutputNetwork(
+    (representation_model): AtomFilter(
+      (model): TorchMD_GN(hidden_channels=64, num_filters=64, num_layers=6, num_rbf=64, rbf_type=gauss, trainable_rbf=False, activation=silu, neighbor_embedding=None, cutoff_lower=0.0, cutoff_upper=6, aggr=add)
+    )
+    (output_networks): ModuleDict(
+      (pkd): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+      (pic50): Sequential(
+        (0): Linear(in_features=64, out_features=32, bias=True)
+        (1): SiLU()
+        (2): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+2025-04-18 00:49:36,704 - kdeep.infer - INFO - Preparing dataset
+2025-04-18 00:49:36,704 - kdeep.infer - INFO -   Atom cutoff: 12
+  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:00<00:00, 539.67it/s]
+2025-04-18 00:49:36,727 - kdeep.infer - INFO - Prepare dataloader
+/opt/conda/lib/python3.10/site-packages/torch_geometric/deprecation.py:26: UserWarning: 'data.DataLoader' is deprecated, use 'loader.DataLoader' instead
+  warnings.warn(out)
+2025-04-18 00:49:36,729 - kdeep.infer - INFO - Perform inference
+Evaluating batch::   0%|          | 0/1 [00:00<?, ?it/s]Evaluating batch:: 100%|██████████| 1/1 [00:02<00:00,  2.80s/it]Evaluating batch:: 100%|██████████| 1/1 [00:02<00:00,  2.84s/it]
+2025-04-18 00:49:39,567 - kdeep.infer - INFO - Time dataset preparation: 0.025333404541015625
+2025-04-18 00:49:39,567 - kdeep.infer - INFO - Time inference: 2.8378121852874756
+2025-04-18 00:49:39,570 - moleculekit.smallmol.smallmollib - INFO - Adding any missing hydrogens to library molecules (fixHs=True)
+  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:00<00:00, 679.46it/s]
