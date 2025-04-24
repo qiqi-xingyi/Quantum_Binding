@@ -210,7 +210,6 @@ class SystemModeler:
             qubit_op: SparsePauliOp = self.mapper.map(hamiltonian_op) # Direct mapping
             print(f"Qubit Hamiltonian created with {qubit_op.num_qubits} qubits.")
 
-
             # --- Step 7: Create Ansatz ---
             print("Creating UCCSD Ansatz...")
             n_so = problem_to_solve.num_spatial_orbitals
