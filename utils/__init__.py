@@ -12,3 +12,4 @@ from .config_manager import ConfigManager
 from .active_space_selector import ActiveSpaceSelector
 from .binding_sys_builder import BindingSystemBuilder
 from .quantum_problem_builder import QiskitProblemBuilder
+from .vqev2 import QVQESolverV2

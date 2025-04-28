@@ -12,6 +12,10 @@ from qiskit_nature.units import DistanceUnit
 from utils import BindingSystemBuilder
 from utils import ActiveSpaceSelector
 from utils import QiskitProblemBuilder
+from utils import QVQESolverV2
+
+from qiskit_ibm_runtime import QiskitRuntimeService
+from utils.config_manager import ConfigManager
 
 # -- SCF runner --
 def run_scf(mol):
@@ -95,5 +99,16 @@ if __name__ == "__main__":
         print(f"  {label.capitalize()} Qubit Num: {qubit_op.num_qubits}")
 
     print("\nPipeline complete. Check result directory for Hamiltonian info files.")
+
+    cfg = ConfigManager("config.txt")
+
+    service = QiskitRuntimeService(
+        channel='ibm_quantum',
+        instance=cfg.get("INSTANCE"),
+        token=cfg.get("TOKEN")
+    )
+
+    solver = QVQESolverV2(service, shots=2048 , min_qubit_num=30, maxiter=50, optimization_level=3)
+    energies, best_params = solver.run_vqe(qubit_op, ansatz)
 
 
