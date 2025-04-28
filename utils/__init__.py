@@ -10,5 +10,4 @@ from .pdb_system_builder import PDBSystemBuilder
 from .plip_parser import PLIPParser
 from .config_manager import ConfigManager
 from .active_space_selector import ActiveSpaceSelector
-from .system_modeler import SystemModeler
 from .binding_sys_builder import BindingSystemBuilder
