@@ -5,19 +5,24 @@
 # @File:quantum_problem_builder.py
 
 import os
+from typing import Tuple, List
+
 from qiskit_nature.units import DistanceUnit
 from qiskit_nature.second_q.drivers import PySCFDriver
 from qiskit_nature.second_q.transformers import ActiveSpaceTransformer
 from qiskit_nature.second_q.mappers import ParityMapper
 from qiskit_nature.second_q.circuit.library import HartreeFock, UCCSD
+from rdkit.Chem.rdmolops import GetFormalCharge
 
-def _split_electrons(total_e: int, spin: int) -> (int, int):
+
+def _split_electrons(total_e: int, spin: int) -> Tuple[int, int]:
     """
     Given total electrons and spin (=alpha-beta), return (num_alpha, num_beta).
     """
     num_alpha = (total_e + spin) // 2
     num_beta  = total_e - num_alpha
     return num_alpha, num_beta
+
 
 class QiskitProblemBuilder:
     """
@@ -39,11 +44,13 @@ class QiskitProblemBuilder:
         self.result_dir = result_dir
         os.makedirs(self.result_dir, exist_ok=True)
 
-    def build(self,
-              mol,
-              active_e: int,
-              active_o: int,
-              mo_start: int):
+    def build(
+        self,
+        mol,
+        active_e: int,
+        active_o: int,
+        mo_start: int
+    ) -> Tuple[any, any]:
         """
         Create qubit Hamiltonian and UCCSD ansatz.
 
@@ -53,8 +60,11 @@ class QiskitProblemBuilder:
         :param mo_start: index of first active orbital
         :returns: (qubit_op, ansatz)
         """
-        # 1) Prepare atomic string list
-        atom_list = [f"{atom[0]} {atom[1][0]} {atom[1][1]} {atom[1][2]}" for atom in mol.atom]
+        # 1) Prepare atomic string list for PySCFDriver
+        atom_list = [
+            f"{sym} {x} {y} {z}"
+            for sym, (x, y, z) in mol.atom
+        ]
 
         # 2) Build electronic structure problem
         driver = PySCFDriver(
@@ -66,13 +76,14 @@ class QiskitProblemBuilder:
         )
         es_problem = driver.run()
 
-        # 3) Apply active space transformer
+        # 3) Apply active space transformer using 'active_orbitals'
         num_alpha, num_beta = _split_electrons(active_e, mol.spin)
+        # build the list of active orbital indices
+        active_orbitals = list(range(mo_start, mo_start + active_o))
         transformer = ActiveSpaceTransformer(
             num_electrons=(num_alpha, num_beta),
             num_spatial_orbitals=active_o,
-            min_cas=mo_start,
-            max_cas=mo_start + active_o - 1
+            active_orbitals=active_orbitals
         )
         red_problem = transformer.transform(es_problem)
 
@@ -86,15 +97,17 @@ class QiskitProblemBuilder:
         print(f"Hamiltonian Terms: {num_terms}")
         print(f"Qubit Num: {num_qubits}")
         info_path = os.path.join(self.result_dir, "hamiltonian_info.txt")
-        with open(info_path, 'w') as info_file:
-            info_file.write(f"Hamiltonian Terms: {num_terms}\n")
-            info_file.write(f"Qubit Num: {num_qubits}\n")
+        with open(info_path, 'w') as f:
+            f.write(f"Hamiltonian Terms: {num_terms}\n")
+            f.write(f"Qubit Num: {num_qubits}\n")
 
         # 5) Build Hartree–Fock initial state
         n_so = red_problem.num_spatial_orbitals
-        hf_init = HartreeFock(n_so,
-                               (red_problem.num_alpha, red_problem.num_beta),
-                               self.mapper)
+        hf_init = HartreeFock(
+            n_so,
+            (red_problem.num_alpha, red_problem.num_beta),
+            self.mapper
+        )
 
         # 6) Create UCCSD ansatz
         ansatz = UCCSD(

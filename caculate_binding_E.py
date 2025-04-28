@@ -19,9 +19,9 @@ def hartree_to_kcal(value_hartree):
 
 def main():
     # Fixed file paths
-    complex_path = './results_projection/combined_final_energy.txt'
-    ligand_path  = './results_projection/ligand_final_energy.txt'
-    protein_path = './results_projection/protein_final_energy.txt'
+    complex_path = 'results_backup/combined_final_energy.txt'
+    ligand_path  = 'results_backup/ligand_final_energy.txt'
+    protein_path = 'results_backup/protein_final_energy.txt'
 
     # Read energies (Hartree)
     E_complex = read_hartree(complex_path)

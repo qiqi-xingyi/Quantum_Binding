@@ -105,21 +105,21 @@ def main():
     print("Final E:", final_energy)
 
     # 9) save result
-    final_energy_path = os.path.join("results_projection", "combined_final_energy.txt")
+    final_energy_path = os.path.join("results_backup", "combined_final_energy.txt")
     with open(final_energy_path, "w") as f:
         f.write(str(final_energy) + "\n")
     print(f"Final energy saved to {final_energy_path}")
 
-    os.makedirs("results_projection", exist_ok=True)
+    os.makedirs("results_backup", exist_ok=True)
 
-    with open("results_projection/combind_energy.csv", "w", newline="") as cf:
+    with open("results_backup/combind_energy.csv", "w", newline="") as cf:
         import csv
         writer=csv.writer(cf)
         writer.writerow(["Iter","Energy"])
         for i,e in enumerate(energies):
             writer.writerow([i+1,e])
 
-    with open("results_projection/params.json","w") as jf:
+    with open("results_backup/params.json", "w") as jf:
         import json
         json.dump({"best_params":best_params.tolist()}, jf, indent=4)
 
