@@ -275,6 +275,7 @@ class VQE_Solver:
                 'optimizer_result': None
             }
 
+
         results = {
             'optimal_point': opt_result.x,
             'optimal_value': opt_result.fun, # Final function value
