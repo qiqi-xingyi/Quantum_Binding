@@ -11,8 +11,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Batch build ligand, residues, and complex molecules with auto charge/spin inference."
     )
-    parser.add_argument('pdb_path',nargs='?', help='Path to PDB file', default='data_set/1c5z/1c5z_Binding_mode.pdb')
-    parser.add_argument('plip_txt_path',nargs='?', help='Path to PLIP txt file', default='data_set/1c5z/1c5z_interaction.txt')
+    parser.add_argument('pdb_path',nargs='?', help='Path to PDB file', default='./data_set/1c5z/1c5z_Binding_mode.pdb')
+    parser.add_argument('plip_txt_path',nargs='?', help='Path to PLIP txt file', default='./data_set/1c5z/1c5z_interaction.txt')
     parser.add_argument('--basis',nargs='?', default='sto3g', help='Basis set')
     args = parser.parse_args()
 
@@ -22,7 +22,6 @@ if __name__ == "__main__":
         basis=args.basis
     )
 
-    # Infer charge and spin
     charge, spin = builder.infer_charge_and_spin()
     print(f"Inferred charge: {charge}, spin multiplicity: {spin}")
 
