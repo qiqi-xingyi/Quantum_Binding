@@ -22,9 +22,6 @@ if __name__ == "__main__":
         basis=args.basis
     )
 
-    charge, spin = builder.infer_charge_and_spin()
-    print(f"Inferred charge: {charge}, spin multiplicity: {spin}")
-
     ligand_mol = builder.get_ligand()
     residue_mol = builder.get_residue_system()
     complex_mol = builder.get_complex_system()
