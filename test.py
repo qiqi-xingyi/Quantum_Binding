@@ -12,7 +12,7 @@ from qiskit_nature.units import DistanceUnit
 from utils import BindingSystemBuilder
 from utils import ActiveSpaceSelector
 from utils import QiskitProblemBuilder
-from utils import QVQESolverV2
+from utils import MultiVQEPipeline
 
 from qiskit_ibm_runtime import QiskitRuntimeService
 from utils.config_manager import ConfigManager
@@ -108,5 +108,7 @@ if __name__ == "__main__":
         token=cfg.get("TOKEN")
     )
 
-    solver = QVQESolverV2(service, shots=2048 , min_qubit_num=30, maxiter=50, optimization_level=3)
+    solver = MultiVQEPipeline(service, shots=2048 , min_qubit_num=30, maxiter=50, optimization_level=3)
     energies, best_params = solver.run_vqe(qubit_op, ansatz)
+
+
