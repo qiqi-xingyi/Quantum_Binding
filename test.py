@@ -110,5 +110,3 @@ if __name__ == "__main__":
 
     solver = QVQESolverV2(service, shots=2048 , min_qubit_num=30, maxiter=50, optimization_level=3)
     energies, best_params = solver.run_vqe(qubit_op, ansatz)
-
-
