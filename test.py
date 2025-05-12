@@ -113,7 +113,7 @@ if __name__ == "__main__":
         result_dir=args.result_dir
     )
 
-    # 4) Run all three VQEs in one session
+    # Run all three VQEs in one session
     results = solver.run(problems)
 
 
