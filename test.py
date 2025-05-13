@@ -5,21 +5,21 @@
 # @File:test.py
 
 import os
-import argparse
 from pyscf import scf
 from qiskit_nature.units import DistanceUnit
 
 from utils import BindingSystemBuilder
-from utils import ActiveSpaceSelector
+from utils import  ActiveSpaceSelector
 from utils import QiskitProblemBuilder
 from utils import MultiVQEPipeline
 
 from qiskit_ibm_runtime import QiskitRuntimeService
 from utils.config_manager import ConfigManager
+import json
 
 # -- SCF runner --
 def run_scf(mol):
-    """Run RHF or ROHF SCF and return mf object."""
+    """Run RHF or ROHF SCF and return the converged mf object."""
     if mol.spin == 0:
         mf = scf.RHF(mol)
     else:
@@ -30,36 +30,19 @@ def run_scf(mol):
     return mf
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Full pipeline: build systems, select active space, build Qiskit problem, run VQE"
-    )
-    parser.add_argument(
-        'pdb_path', nargs='?',
-        default='./data_set/1c5z/1c5z_Binding_mode.pdb',
-        help='Path to PDB file'
-    )
-    parser.add_argument(
-        'plip_txt_path', nargs='?',
-        default='./data_set/1c5z/1c5z_interaction.txt',
-        help='Path to PLIP txt file'
-    )
-    parser.add_argument(
-        '--basis', default='sto3g',
-        help='Basis set for all systems'
-    )
-    parser.add_argument(
-        '--result_dir', default='results_pipeline',
-        help='Directory to save all outputs'
-    )
-    args = parser.parse_args()
+    # Fixed paths and settings
+    pdb_path       = "./data_set/1c5z/1c5z_Binding_mode.pdb"
+    plip_txt_path  = "./data_set/1c5z/1c5z_interaction.txt"
+    basis          = "sto3g"
+    result_dir     = "results_pipeline"
 
-    os.makedirs(args.result_dir, exist_ok=True)
+    os.makedirs(result_dir, exist_ok=True)
 
     # Build ligand, residue, complex molecules
     builder = BindingSystemBuilder(
-        pdb_path=args.pdb_path,
-        plip_txt_path=args.plip_txt_path,
-        basis=args.basis
+        pdb_path=pdb_path,
+        plip_txt_path=plip_txt_path,
+        basis=basis
     )
     molecules = {
         'ligand':  builder.get_ligand(),
@@ -74,9 +57,9 @@ if __name__ == "__main__":
         n_after_lumo=5
     )
     qp_builder = QiskitProblemBuilder(
-        basis=args.basis,
+        basis=basis,
         distance_unit=DistanceUnit.ANGSTROM,
-        result_dir=args.result_dir
+        result_dir=result_dir
     )
 
     problems = {}
@@ -109,24 +92,24 @@ if __name__ == "__main__":
         shots=2048,
         maxiter=50,
         optimization_level=3,
-        result_dir=args.result_dir
+        result_dir=result_dir
     )
 
     # Run all three VQEs in one session
     results = solver.run(problems)
 
-
+    # Save summaries
     for label, data in results.items():
-
         summary = {
             'energies': data['energies'],
             'ground_energy': data['ground_energy']
         }
-        import json
-        with open(os.path.join(args.result_dir, f"{label}_summary.json"), 'w') as f:
+        summary_path = os.path.join(result_dir, f"{label}_summary.json")
+        with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2)
 
-    print("\nAll VQE runs complete. Check", args.result_dir, "for detailed outputs.")
+    print("\nAll VQE runs complete. Check", result_dir, "for detailed outputs.")
+
 
 
 
