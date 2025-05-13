@@ -17,7 +17,7 @@ from qiskit_ibm_runtime import QiskitRuntimeService
 from utils.config_manager import ConfigManager
 import json
 
-# -- SCF runner --
+
 def run_scf(mol):
     """Run RHF or ROHF SCF and return the converged mf object."""
     if mol.spin == 0:
@@ -30,6 +30,7 @@ def run_scf(mol):
     return mf
 
 if __name__ == "__main__":
+
     # Fixed paths and settings
     pdb_path       = "./data_set/1c5z/1c5z_Binding_mode.pdb"
     plip_txt_path  = "./data_set/1c5z/1c5z_interaction.txt"
