@@ -29,7 +29,6 @@ def run_scf(mol):
     mf.kernel()
     return mf
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Full pipeline: build systems, select active space, build Qiskit problem, run VQE"
