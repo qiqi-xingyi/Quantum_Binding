@@ -8,11 +8,7 @@ import os
 import numpy as np
 from scipy.optimize import minimize
 from typing import Dict, Any, List, Tuple
-from qiskit_ibm_runtime import Session
-try:
-    from qiskit_ibm_runtime import Estimator as RuntimeEstimator
-except ImportError:
-    from qiskit.primitives import Estimator as RuntimeEstimator
+from qiskit_ibm_runtime import Session, Estimator
 
 class MultiVQEPipeline:
     """
@@ -51,21 +47,20 @@ class MultiVQEPipeline:
         :param problems: dict mapping label -> (qubit_op, ansatz)
         :returns: dict mapping label -> {'energies': List[float], 'ground_energy': float}
         """
-        # Select backend with sufficient qubits
+        # select backend with sufficient qubits
         max_qubits = max(qop.num_qubits for qop, _ in problems.values())
         backend = self.service.least_busy(
             simulator=False,
             operational=True,
             min_num_qubits=max_qubits
         )
-        session = Session(backend=backend)
-
-        ###
-        estimator = RuntimeEstimator(session=session)
-
+        # open a single session
+        session = Session(service=self.service, backend=backend)
+        # create estimator without session arg
+        estimator = Estimator()
         estimator.options.default_shots = self.shots
 
-        # Pre-transpile ansatz circuits once
+        # pre-transpile ansatz circuits once
         from qiskit import transpile
         transpiled = {
             label: transpile(ansatz,
@@ -77,24 +72,33 @@ class MultiVQEPipeline:
         results: Dict[str, Dict[str, Any]] = {}
         for label, (qop, ansatz) in problems.items():
             circ = transpiled[label]
-            pub = (circ, [qop])
             energy_history: List[float] = []
 
             def cost_grad(x):
                 # energy evaluation
-                energy_job = estimator.run(publists=[pub], parameter_values=[x])
+                energy_job = estimator.run(
+                    circuits=[circ],
+                    observables=[qop],
+                    parameter_values=[x],
+                    session=session
+                )
                 energy = energy_job.result().values[0]
                 # gradient evaluation
-                grad_job = estimator.run_gradient(publists=[pub], parameter_values=[x])
+                grad_job = estimator.run_gradient(
+                    circuits=[circ],
+                    observables=[qop],
+                    parameter_values=[x],
+                    session=session
+                )
                 gradient = grad_job.result().gradients[0]
-                # record
+
                 energy_history.append(energy)
                 print(f"{label} iter {len(energy_history)}: Energy = {energy}")
                 return energy, np.array(gradient)
 
             # initial parameters = zeros
             x0 = np.zeros(circ.num_parameters)
-            # optimization
+            # optimize
             res = minimize(
                 fun=lambda x: cost_grad(x)[0],
                 x0=x0,
@@ -103,14 +107,14 @@ class MultiVQEPipeline:
                 options={'maxiter': self.maxiter}
             )
 
-            # compute ground energy
+            # ground energy
             ground_energy = min(energy_history) if energy_history else None
             results[label] = {
                 'energies': energy_history,
                 'ground_energy': ground_energy
             }
 
-            # save energies and ground energy
+            # save outputs
             energy_file = os.path.join(self.result_dir, f"{label}_energies.csv")
             np.savetxt(
                 energy_file,
