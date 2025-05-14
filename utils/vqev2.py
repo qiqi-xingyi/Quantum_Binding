@@ -59,7 +59,10 @@ class MultiVQEPipeline:
             min_num_qubits=max_qubits
         )
         session = Session(backend=backend)
+
+        ###
         estimator = RuntimeEstimator(session=session)
+
         estimator.options.default_shots = self.shots
 
         # Pre-transpile ansatz circuits once
