@@ -39,10 +39,9 @@ class MultiVQEPipeline:
         problems: Dict[str, Tuple[Any, Any]]
     ) -> Dict[str, Dict[str, Any]]:
         """
-        Execute VQE for each problem in one session,
-        log timing metadata and job details per iteration.
+        Execute VQE for each problem in one session, log timing metadata and job details.
 
-        :param problems: dict mapping label -> (qubit_op, ansatz)
+        :param problems: dict mapping label -> (qubit_op, ansatz or solver)
         :return: dict mapping label -> {'energies', 'ground_energy'}
         """
         max_qubits = max(qop.num_qubits for qop, _ in problems.values())
@@ -55,31 +54,54 @@ class MultiVQEPipeline:
         estimator = EstimatorV2(mode=session)
         estimator.options.default_shots = self.shots
 
+        # Pre-transpile ansatz circuits once (for circuit-based solvers)
         from qiskit import transpile
-        transpiled = {
-            label: transpile(ansatz,
-                              backend=backend,
-                              optimization_level=self.optimization_level)
-            for label, (_, ansatz) in problems.items()
-        }
+        transpiled = {}
+        for label, (qop, solver) in problems.items():
+            if hasattr(solver, 'num_qubits') or hasattr(solver, 'decompose'):
+                # it's a circuit ansatz
+                circ = solver
+                transpiled[label] = transpile(
+                    circ,
+                    backend=backend,
+                    optimization_level=self.optimization_level
+                )
 
         results: Dict[str, Dict[str, Any]] = {}
-        for label, (qop, ansatz) in problems.items():
-            circ = transpiled[label]
+        for label, (qop, solver) in problems.items():
             energy_history: List[float] = []
             timeline: List[Dict[str, Any]] = []
 
-            def cost_grad(x):
-                pub = (circ, [qop], [x])
+            if hasattr(solver, 'compute_minimum_eigenvalue'):
+                # AdaptVQE solver
+                adapt_result = solver.compute_minimum_eigenvalue(qop)
+                energy = adapt_result.eigenvalue
+                energy_history.append(energy)
+                results[label] = {
+                    'energies': energy_history,
+                    'ground_energy': energy
+                }
+                # save summary
+                summary = {
+                    'ground_energy': energy,
+                    'num_iterations': adapt_result.num_iterations,
+                    'final_maximum_gradient': adapt_result.final_maximum_gradient
+                }
+                with open(os.path.join(self.result_dir, f"{label}_adapt_summary.json"), 'w') as f:
+                    json.dump(summary, f, indent=2)
+                continue
 
+            # otherwise it's a circuit-based ansatz (UCCSD, k-UpCCGSD, etc.)
+            circ = transpiled[label]
+
+            def cost_grad(x):
                 # Quantum execution
                 qpu_start = time.monotonic()
+                pub = (circ, [qop], [x])
                 job = estimator.run([pub])
-                job_res = job.result()[0]
+                res = job.result()[0]
                 qpu_end = time.monotonic()
-
-                md = job_res.metadata or {}
-                job_id = job.job_id()
+                md = res.metadata or {}
                 qpu_exec = md.get('execution_time') or (qpu_end - qpu_start)
                 queue_delay = None
                 if md.get('queued_at') and md.get('started_at'):
@@ -92,11 +114,10 @@ class MultiVQEPipeline:
                     dt_o = datetime.fromisoformat(md['completed_at'].replace('Z', '+00:00'))
                     total_qsession = (dt_o - dt_c).total_seconds()
 
-                # record quantum entry
                 timeline.append({
                     'iter': len(energy_history)+1,
                     'stage': 'quantum',
-                    'job_id': job_id,
+                    'job_id': job.job_id(),
                     'num_qubits': qop.num_qubits,
                     'shots': self.shots,
                     'depth': circ.depth(),
@@ -109,21 +130,26 @@ class MultiVQEPipeline:
 
                 # Classical gradient
                 classical_start = time.monotonic()
-                grad_job = estimator.run_gradient([pub])
+                grad_job = estimator.run_gradient(
+                    circuits=[circ],
+                    observables=[qop],
+                    parameter_values=[x]
+                )
                 grads = grad_job.result().gradients[0]
                 classical_end = time.monotonic()
                 classical_time = classical_end - classical_start
-
                 timeline.append({
                     'iter': len(energy_history)+1,
                     'stage': 'classical',
                     'duration_s': classical_time
                 })
 
-                # record energy
-                energy = job_res.data.evs[0]
+                energy = res.data.evs[0]
                 energy_history.append(energy)
                 print(f"{label} iter {len(energy_history)}: E={energy:.6f}, QPU={qpu_exec:.3f}s, CPU={classical_time:.3f}s")
+                # update log file
+                with open(os.path.join(self.result_dir, f"{label}_timeline.json"), 'w') as lf:
+                    json.dump(timeline, lf, indent=2)
                 return energy, np.array(grads)
 
             x0 = np.zeros(circ.num_parameters)
@@ -138,7 +164,6 @@ class MultiVQEPipeline:
             ground_energy = min(energy_history) if energy_history else None
             results[label] = {'energies': energy_history, 'ground_energy': ground_energy}
 
-            # save energies and ground energy
             np.savetxt(
                 os.path.join(self.result_dir, f"{label}_energies.csv"),
                 np.vstack((np.arange(1, len(energy_history)+1), energy_history)).T,
@@ -147,10 +172,6 @@ class MultiVQEPipeline:
             if ground_energy is not None:
                 with open(os.path.join(self.result_dir, f"{label}_ground_energy.txt"), 'w') as gf:
                     gf.write(f"{ground_energy}\n")
-
-            # save timeline as JSON
-            with open(os.path.join(self.result_dir, f"{label}_timeline.json"), 'w') as lf:
-                json.dump(timeline, lf, indent=2)
 
         session.close()
         return results
