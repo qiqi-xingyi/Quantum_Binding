@@ -88,6 +88,7 @@ if __name__ == "__main__":
         instance=cfg.get("INSTANCE"),
         token=cfg.get("TOKEN")
     )
+
     solver = MultiVQEPipeline(
         service=service,
         shots=2048,
