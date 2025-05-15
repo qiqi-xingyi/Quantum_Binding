@@ -29,7 +29,7 @@ class QiskitProblemBuilder:
         distance_unit: DistanceUnit = DistanceUnit.ANGSTROM,
         qubit_mapper: ParityMapper = None,
         result_dir: str = "results",
-        ansatz_type: str = "uccsd",
+        ansatz_type: str = "kupccgsd",
         reps: int = 1,
         adapt_max_iter: int = 10,
         adapt_threshold: float = 1e-5
