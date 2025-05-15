@@ -2,7 +2,7 @@
 # @time:4/28/25 16:21
 # @Author : Yuqi Zhang
 # @Email : yzhan135@kent.edu
-# @File:banckwork.py
+# @File:benchwork.py
 
 import os
 from pyscf import scf
