@@ -103,8 +103,8 @@ class QiskitProblemBuilder:
 
         # 6b) k-UpCCGSD circuit ansatz
         if t == "kupccgsd":
-            from qiskit_nature.second_q.circuit.library import KUpCCGSD
-            ansatz = KUpCCGSD(
+            from qiskit_nature.second_q.circuit.library import PUCCSD
+            ansatz = PUCCSD(
                 num_spatial_orbitals=n_so,
                 num_particles=(red_problem.num_alpha, red_problem.num_beta),
                 qubit_mapper=self.mapper,
