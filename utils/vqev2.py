@@ -16,7 +16,8 @@ from qiskit_ibm_runtime import Session, EstimatorV2
 class MultiVQEPipeline:
     """
     Runs VQE for multiple systems in a single Runtime session,
-    recording precise quantum vs classical timing metadata per iteration.
+    recording precise quantum vs classical timing metadata per iteration
+    and exporting a sequential timeline including job details.
     """
     def __init__(
         self,
@@ -38,24 +39,22 @@ class MultiVQEPipeline:
         problems: Dict[str, Tuple[Any, Any]]
     ) -> Dict[str, Dict[str, Any]]:
         """
-        Execute VQE for each problem in one session, log timing metadata.
+        Execute VQE for each problem in one session,
+        log timing metadata and job details per iteration.
 
         :param problems: dict mapping label -> (qubit_op, ansatz)
         :return: dict mapping label -> {'energies', 'ground_energy'}
         """
-        # select backend
         max_qubits = max(qop.num_qubits for qop, _ in problems.values())
         backend = self.service.least_busy(
             simulator=False,
             operational=True,
             min_num_qubits=max_qubits
         )
-        # open session
         session = Session(backend=backend)
         estimator = EstimatorV2(mode=session)
         estimator.options.default_shots = self.shots
 
-        # transpile all ansätze
         from qiskit import transpile
         transpiled = {
             label: transpile(ansatz,
@@ -68,69 +67,66 @@ class MultiVQEPipeline:
         for label, (qop, ansatz) in problems.items():
             circ = transpiled[label]
             energy_history: List[float] = []
-            log_entries: List[Dict[str, Any]] = []
+            timeline: List[Dict[str, Any]] = []
 
             def cost_grad(x):
-                # build PUB
                 pub = (circ, [qop], [x])
-                # quantum execution
+
+                # Quantum execution
                 qpu_start = time.monotonic()
                 job = estimator.run([pub])
                 job_res = job.result()[0]
                 qpu_end = time.monotonic()
-                # extract metadata
+
                 md = job_res.metadata or {}
-                # execution time provided
-                qpu_exec = md.get('execution_time')
-                # queue delay
+                job_id = job.job_id()
+                qpu_exec = md.get('execution_time') or (qpu_end - qpu_start)
                 queue_delay = None
-                qa = md.get('queued_at')
-                sa = md.get('started_at')
-                if qa and sa:
-                    dt_q = datetime.fromisoformat(qa.replace('Z', '+00:00'))
-                    dt_s = datetime.fromisoformat(sa.replace('Z', '+00:00'))
+                if md.get('queued_at') and md.get('started_at'):
+                    dt_q = datetime.fromisoformat(md['queued_at'].replace('Z', '+00:00'))
+                    dt_s = datetime.fromisoformat(md['started_at'].replace('Z', '+00:00'))
                     queue_delay = (dt_s - dt_q).total_seconds()
-                # total q session
                 total_qsession = None
-                ca = md.get('created_at')
-                co = md.get('completed_at')
-                if ca and co:
-                    dt_c = datetime.fromisoformat(ca.replace('Z', '+00:00'))
-                    dt_o = datetime.fromisoformat(co.replace('Z', '+00:00'))
+                if md.get('created_at') and md.get('completed_at'):
+                    dt_c = datetime.fromisoformat(md['created_at'].replace('Z', '+00:00'))
+                    dt_o = datetime.fromisoformat(md['completed_at'].replace('Z', '+00:00'))
                     total_qsession = (dt_o - dt_c).total_seconds()
-                # classical gradient
+
+                # record quantum entry
+                timeline.append({
+                    'iter': len(energy_history)+1,
+                    'stage': 'quantum',
+                    'job_id': job_id,
+                    'num_qubits': qop.num_qubits,
+                    'shots': self.shots,
+                    'depth': circ.depth(),
+                    'priority_level': md.get('priority'),
+                    'arrival_time': md.get('created_at'),
+                    'duration_s': qpu_exec,
+                    'queue_delay_s': queue_delay,
+                    'total_qsession_s': total_qsession
+                })
+
+                # Classical gradient
                 classical_start = time.monotonic()
                 grad_job = estimator.run_gradient([pub])
-                grad = grad_job.result().gradients[0]
+                grads = grad_job.result().gradients[0]
                 classical_end = time.monotonic()
                 classical_time = classical_end - classical_start
+
+                timeline.append({
+                    'iter': len(energy_history)+1,
+                    'stage': 'classical',
+                    'duration_s': classical_time
+                })
 
                 # record energy
                 energy = job_res.data.evs[0]
                 energy_history.append(energy)
-                idx = len(energy_history)
+                print(f"{label} iter {len(energy_history)}: E={energy:.6f}, QPU={qpu_exec:.3f}s, CPU={classical_time:.3f}s")
+                return energy, np.array(grads)
 
-                # log entry
-                entry = {
-                    'iter': idx,
-                    'energy': energy,
-                    'qpu_wall_time_s': qpu_end - qpu_start,
-                    'qpu_exec_time_s': qpu_exec,
-                    'queue_delay_s': queue_delay,
-                    'total_qsession_s': total_qsession,
-                    'classical_time_s': classical_time
-                }
-                log_entries.append(entry)
-                # write log file after each iteration
-                with open(os.path.join(self.result_dir, f"{label}_log.json"), 'w') as lf:
-                    json.dump(log_entries, lf, indent=2)
-
-                print(f"{label} iter {idx}: E={energy:.6f}, QPU_exec={qpu_exec}s, queue={queue_delay}s, CPU={classical_time:.3f}s")
-                return energy, np.array(grad)
-
-            # initial guess
             x0 = np.zeros(circ.num_parameters)
-            # optimize
             minimize(
                 fun=lambda x: cost_grad(x)[0],
                 x0=x0,
@@ -139,10 +135,10 @@ class MultiVQEPipeline:
                 options={'maxiter': self.maxiter}
             )
 
-            # finalize
             ground_energy = min(energy_history) if energy_history else None
             results[label] = {'energies': energy_history, 'ground_energy': ground_energy}
-            # save energies & ground energy
+
+            # save energies and ground energy
             np.savetxt(
                 os.path.join(self.result_dir, f"{label}_energies.csv"),
                 np.vstack((np.arange(1, len(energy_history)+1), energy_history)).T,
@@ -151,6 +147,10 @@ class MultiVQEPipeline:
             if ground_energy is not None:
                 with open(os.path.join(self.result_dir, f"{label}_ground_energy.txt"), 'w') as gf:
                     gf.write(f"{ground_energy}\n")
+
+            # save timeline as JSON
+            with open(os.path.join(self.result_dir, f"{label}_timeline.json"), 'w') as lf:
+                json.dump(timeline, lf, indent=2)
 
         session.close()
         return results
