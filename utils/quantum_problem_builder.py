@@ -113,6 +113,20 @@ class QiskitProblemBuilder:
             )
             return qubit_op, ansatz
 
+        # 6b-plus) Hardware-efficient EfficientSU2 ansatz
+        if t in {"efficient_su2", "he_su2", "su2"}:
+
+            print("***** job is in the su2 model *****")
+
+            from qiskit.circuit.library import EfficientSU2
+            ansatz = EfficientSU2(
+                num_qubits=qubit_op.num_qubits,
+                reps=self.reps,
+                entanglement="linear",
+                insert_barriers=True
+            )
+            return qubit_op, ansatz
+
         # 6c) ADAPT-VQE solver
         if t == "adapt-vqe":
             from qiskit.circuit.library import EvolvedOperatorAnsatz
@@ -144,16 +158,7 @@ class QiskitProblemBuilder:
             # Return the operator and the AdaptVQE instance
             return qubit_op, adapt_solver
 
-        # 6b-plus) Hardware-efficient EfficientSU2 ansatz
-        if t in {"efficient_su2", "he_su2", "su2"}:
-            from qiskit.circuit.library import EfficientSU2
-            ansatz = EfficientSU2(
-                num_qubits=qubit_op.num_qubits,
-                reps=self.reps,
-                entanglement="linear",
-                insert_barriers=True
-            )
-            return qubit_op, ansatz
+
 
         # 6d) Unsupported
         raise ValueError(f"Unsupported ansatz_type: {self.ansatz_type}")
