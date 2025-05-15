@@ -4,146 +4,161 @@
 # @Email : yzhan135@kent.edu
 # @File:quantum_problem_builder.py
 
-import os
-from typing import Any, Tuple, List
-from qiskit_nature.units import DistanceUnit
-from qiskit_nature.second_q.drivers import PySCFDriver
-from qiskit_nature.second_q.transformers import ActiveSpaceTransformer
-from qiskit_nature.second_q.mappers import ParityMapper
-from qiskit_nature.second_q.circuit.library import HartreeFock, UCCSD
-from rdkit.Chem.rdmolops import GetFormalCharge
+import os, time, json
+import numpy as np
+from datetime import datetime
+from typing import Dict, Any, List, Tuple
+from scipy.optimize import minimize
 
-def _split_electrons(total_e: int, spin: int) -> Tuple[int, int]:
-    num_alpha = (total_e + spin) // 2
-    num_beta  = total_e - num_alpha
-    return num_alpha, num_beta
+from qiskit_ibm_runtime import Session, EstimatorV2
+from qiskit import transpile
 
-class QiskitProblemBuilder:
+
+class MultiVQEPipeline:
     """
-    Build either a (qubit_op, ansatz_circuit) for standard VQE,
-    or a (qubit_op, adapt_solver) for ADAPT-VQE.
+    VQE / Adapt-VQE runner with correct hardware transpilation & layout sync.
     """
+
     def __init__(
         self,
-        basis: str = "sto3g",
-        distance_unit: DistanceUnit = DistanceUnit.ANGSTROM,
-        qubit_mapper: ParityMapper = None,
-        result_dir: str = "results",
-        ansatz_type: str = "kupccgsd",
-        reps: int = 1,
-        adapt_max_iter: int = 10,
-        adapt_threshold: float = 1e-5
+        service,
+        shots: int = 1024,
+        maxiter: int = 100,
+        optimization_level: int = 3,
+        result_dir: str = "results_vqe",
     ):
-        self.basis           = basis
-        self.unit            = distance_unit
-        self.mapper          = qubit_mapper or ParityMapper()
-        self.result_dir      = result_dir
-        self.ansatz_type     = ansatz_type.lower()
-        self.reps            = reps
-        self.adapt_max_iter  = adapt_max_iter
-        self.adapt_threshold = adapt_threshold
-        os.makedirs(self.result_dir, exist_ok=True)
+        self.service = service
+        self.shots = shots
+        self.maxiter = maxiter
+        self.optimization_level = optimization_level
+        self.result_dir = result_dir
+        os.makedirs(result_dir, exist_ok=True)
 
-    def build(
-        self,
-        mol,
-        active_e: int,
-        active_o: int,
-        mo_start: int
-    ) -> Tuple[Any, Any]:
-        # --- 1) Build electronic structure problem ---
-        atom_list = [f"{sym} {x} {y} {z}" for sym,(x,y,z) in mol.atom]
-        driver = PySCFDriver(
-            atom=atom_list,
-            basis=self.basis,
-            charge=mol.charge,
-            spin=mol.spin,
-            unit=self.unit
+    # ------------------------------------------------------------------
+    def run(self, problems: Dict[str, Tuple[Any, Any]]) -> Dict[str, Dict[str, Any]]:
+        max_q = max(qop.num_qubits for qop, _ in problems.values())
+        backend = self.service.least_busy(
+            simulator=False, operational=True, min_num_qubits=max_q
         )
-        es_problem = driver.run()
 
-        # --- 2) Apply active space ---
-        num_alpha, num_beta = _split_electrons(active_e, mol.spin)
-        active_orbitals = list(range(mo_start, mo_start + active_o))
-        transformer = ActiveSpaceTransformer(
-            num_electrons=(num_alpha, num_beta),
-            num_spatial_orbitals=active_o,
-            active_orbitals=active_orbitals
-        )
-        red_problem = transformer.transform(es_problem)
+        session = Session(backend=backend)
+        estimator = EstimatorV2(mode=session)
+        estimator.options.default_shots = self.shots
 
-        # --- 3) Map to qubits ---
-        second_q_op = red_problem.hamiltonian.second_q_op()
-        qubit_op = self.mapper.map(second_q_op)
+        results: Dict[str, Dict[str, Any]] = {}
 
-        # --- 4) Record Hamiltonian info ---
-        num_terms  = len(qubit_op)
-        num_qubits = qubit_op.num_qubits
-        print(f"Hamiltonian Terms: {num_terms}, Qubit Num: {num_qubits}")
-        with open(os.path.join(self.result_dir, "hamiltonian_info.txt"), 'w') as f:
-            f.write(f"Hamiltonian Terms: {num_terms}\n")
-            f.write(f"Qubit Num: {num_qubits}\n")
+        for label, (qop, solver) in problems.items():
+            # ------------ Adapt-VQE branch -------------
+            if hasattr(solver, "compute_minimum_eigenvalue"):
+                res = solver.compute_minimum_eigenvalue(qop)
+                g_e = res.eigenvalue
+                results[label] = {"energies": [g_e], "ground_energy": g_e}
+                with open(
+                    os.path.join(self.result_dir, f"{label}_adapt_summary.json"), "w"
+                ) as f:
+                    json.dump(
+                        {
+                            "ground_energy": g_e,
+                            "num_iterations": res.num_iterations,
+                            "final_max_gradient": res.final_maximum_gradient,
+                        },
+                        f,
+                        indent=2,
+                    )
+                continue
 
-        # --- 5) Prepare HF initial state ---
-        n_so    = red_problem.num_spatial_orbitals
-        hf_init = HartreeFock(n_so, (red_problem.num_alpha, red_problem.num_beta), self.mapper)
+            # ------------ Standard VQE branch ----------
+            raw_circ = solver                     # QuantumCircuit ansatz
+            n_q = raw_circ.num_qubits
 
-        # --- 6) Build the requested ansatz or solver ---
-        t = self.ansatz_type
-
-        # 6a) Standard UCCSD circuit ansatz
-        if t == "uccsd":
-            ansatz = UCCSD(
-                num_spatial_orbitals=n_so,
-                num_particles=(red_problem.num_alpha, red_problem.num_beta),
-                qubit_mapper=self.mapper,
-                initial_state=hf_init
-            )
-            return qubit_op, ansatz
-
-        # 6b) k-UpCCGSD circuit ansatz
-        if t == "kupccgsd":
-            from qiskit_nature.second_q.circuit.library import PUCCSD
-            ansatz = PUCCSD(
-                num_spatial_orbitals=n_so,
-                num_particles=(red_problem.num_alpha, red_problem.num_beta),
-                qubit_mapper=self.mapper,
-                reps=self.reps,
-                initial_state=hf_init
-            )
-            return qubit_op, ansatz
-
-        # 6c) ADAPT-VQE solver
-        if t == "adapt-vqe":
-            from qiskit.circuit.library import EvolvedOperatorAnsatz
-            from qiskit_ibm_runtime import Estimator
-            from qiskit_algorithms.minimum_eigensolvers import AdaptVQE, VQE
-            from qiskit_algorithms.optimizers import SLSQP
-
-            # 1) Build an EvolvedOperatorAnsatz from the operator
-            evo_ansatz = EvolvedOperatorAnsatz(
-                operator=second_q_op,
-                reps=self.reps
+            # ① transpile to hardware gate set, keep logical lines 0..n_q-1
+            circ_t = transpile(
+                raw_circ,
+                backend=backend,
+                optimization_level=self.optimization_level,
+                initial_layout=list(range(n_q)),
+                routing_method="basic",
             )
 
-            # 2) Wrap in a VQE primitive using the Runtime Estimator
-            vqe_solver = VQE(
-                Estimator(),
-                evo_ansatz,
-                SLSQP(maxiter=self.adapt_max_iter)
+            # ② apply same layout to observable
+            qop_t = qop.apply_layout(circ_t.layout)
+
+            # optimisation loop
+            energy_hist: List[float] = []
+            timeline: List[Dict[str, Any]] = []
+
+            def cost_grad(pars):
+                pub = (circ_t, [qop_t], [pars])
+
+                t0 = time.monotonic()
+                job_e = estimator.run([pub])
+                ev = job_e.result()[0]
+                t1 = time.monotonic()
+
+                md = ev.metadata or {}
+                qpu_dt = md.get("execution_time", t1 - t0)
+
+                # gradient
+                t2 = time.monotonic()
+                job_g = estimator.run_gradient([pub])
+                grad = job_g.result().gradients[0]
+                t3 = time.monotonic()
+
+                idx = len(energy_hist) + 1
+                energy = ev.data.evs[0]
+                energy_hist.append(energy)
+
+                timeline.extend(
+                    [
+                        {
+                            "iter": idx,
+                            "stage": "quantum",
+                            "job_id": job_e.job_id(),
+                            "duration_s": qpu_dt,
+                        },
+                        {
+                            "iter": idx,
+                            "stage": "classical",
+                            "duration_s": t3 - t2,
+                        },
+                    ]
+                )
+                with open(
+                    os.path.join(self.result_dir, f"{label}_timeline.json"), "w"
+                ) as lf:
+                    json.dump(timeline, lf, indent=2)
+
+                print(
+                    f"{label} iter {idx}: E={energy:.6f}  "
+                    f"QPU={qpu_dt:.3f}s  CPU={(t3 - t2):.3f}s"
+                )
+                return energy, np.array(grad)
+
+            x0 = np.zeros(circ_t.num_parameters)
+            minimize(
+                fun=lambda p: cost_grad(p)[0],
+                x0=x0,
+                jac=lambda p: cost_grad(p)[1],
+                method="BFGS",
+                options={"maxiter": self.maxiter},
             )
 
-            # 3) Build the AdaptVQE wrapper
-            adapt_solver = AdaptVQE(
-                solver=vqe_solver,
-                gradient_threshold=self.adapt_threshold,
-                eigenvalue_threshold=self.adapt_threshold,
-                max_iterations=self.adapt_max_iter
+            g_e = min(energy_hist)
+            results[label] = {"energies": energy_hist, "ground_energy": g_e}
+
+            np.savetxt(
+                os.path.join(self.result_dir, f"{label}_energies.csv"),
+                np.c_[np.arange(1, len(energy_hist) + 1), energy_hist],
+                header="Iter,Energy",
+                delimiter=",",
+                comments="",
             )
+            with open(
+                os.path.join(self.result_dir, f"{label}_ground_energy.txt"), "w"
+            ) as gf:
+                gf.write(f"{g_e}\n")
 
-            # Return the operator and the AdaptVQE instance
-            return qubit_op, adapt_solver
+        session.close()
+        return results
 
-        # 6d) Unsupported
-        raise ValueError(f"Unsupported ansatz_type: {self.ansatz_type}")
 
