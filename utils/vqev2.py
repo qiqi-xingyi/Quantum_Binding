@@ -8,18 +8,12 @@ import os
 import numpy as np
 from scipy.optimize import minimize
 from typing import Dict, Any, List, Tuple
-from qiskit_ibm_runtime import Session, Estimator
+from qiskit_ibm_runtime import Session, EstimatorV2
 
 class MultiVQEPipeline:
     """
-    Runs VQE for multiple systems in a single Runtime session using gradient-based optimization.
-
-    Attributes:
-        service: QiskitRuntimeService instance
-        shots: number of measurement shots per evaluation
-        maxiter: max iterations for optimizer
-        optimization_level: transpiler optimization level
-        result_dir: directory to save per-system results
+    Runs VQE for multiple qubit problems in a single Qiskit Runtime session,
+    using gradient-based SciPy optimization.
     """
     def __init__(
         self,
@@ -41,26 +35,27 @@ class MultiVQEPipeline:
         problems: Dict[str, Tuple[Any, Any]]
     ) -> Dict[str, Dict[str, Any]]:
         """
-        Run VQE on each (qubit_op, ansatz) pair in 'problems' dict.
-        All runs share one Session and Estimator.
+        Execute VQE for each problem in a single session.
 
         :param problems: dict mapping label -> (qubit_op, ansatz)
-        :returns: dict mapping label -> {'energies': List[float], 'ground_energy': float}
+        :return: dict mapping label -> {'energies': [...], 'ground_energy': float}
         """
-        # select backend with sufficient qubits
+        # 1) Select a backend that can run all problems
         max_qubits = max(qop.num_qubits for qop, _ in problems.values())
         backend = self.service.least_busy(
             simulator=False,
             operational=True,
             min_num_qubits=max_qubits
         )
-        # open a single session
-        session = Session(service=self.service, backend=backend)
-        # create estimator without session arg
-        estimator = Estimator()
+
+        # 2) Open a single session for all VQE runs
+        session = Session(backend=backend)
+
+        # 3) Instantiate EstimatorV2 in session execution mode
+        estimator = EstimatorV2(mode=session)
         estimator.options.default_shots = self.shots
 
-        # pre-transpile ansatz circuits once
+        # 4) Pre-transpile all ansatz circuits
         from qiskit import transpile
         transpiled = {
             label: transpile(ansatz,
@@ -75,31 +70,27 @@ class MultiVQEPipeline:
             energy_history: List[float] = []
 
             def cost_grad(x):
+                # build a single PUB: (circuit, [observable], [params])
+                pub = (circ, [qop], [x])
+
                 # energy evaluation
-                energy_job = estimator.run(
-                    circuits=[circ],
-                    observables=[qop],
-                    parameter_values=[x],
-                    session=session
-                )
-                energy = energy_job.result().values[0]
+                job_e = estimator.run([pub])
+                res_e = job_e.result()[0]
+                energy = res_e.data.evs[0]
+
                 # gradient evaluation
-                grad_job = estimator.run_gradient(
-                    circuits=[circ],
-                    observables=[qop],
-                    parameter_values=[x],
-                    session=session
-                )
-                gradient = grad_job.result().gradients[0]
+                job_g = estimator.run_gradient([pub])
+                gradient = job_g.result().gradients[0]
 
                 energy_history.append(energy)
                 print(f"{label} iter {len(energy_history)}: Energy = {energy}")
                 return energy, np.array(gradient)
 
-            # initial parameters = zeros
+            # initial guess
             x0 = np.zeros(circ.num_parameters)
-            # optimize
-            res = minimize(
+
+            # optimize with gradient (BFGS)
+            minimize(
                 fun=lambda x: cost_grad(x)[0],
                 x0=x0,
                 jac=lambda x: cost_grad(x)[1],
@@ -107,17 +98,15 @@ class MultiVQEPipeline:
                 options={'maxiter': self.maxiter}
             )
 
-            # ground energy
             ground_energy = min(energy_history) if energy_history else None
             results[label] = {
                 'energies': energy_history,
                 'ground_energy': ground_energy
             }
 
-            # save outputs
-            energy_file = os.path.join(self.result_dir, f"{label}_energies.csv")
+            # save energy trace and ground-state energy
             np.savetxt(
-                energy_file,
+                os.path.join(self.result_dir, f"{label}_energies.csv"),
                 np.vstack((np.arange(1, len(energy_history)+1), energy_history)).T,
                 header="Iter,Energy",
                 delimiter=",",
@@ -127,6 +116,6 @@ class MultiVQEPipeline:
                 with open(os.path.join(self.result_dir, f"{label}_ground_energy.txt"), 'w') as f:
                     f.write(f"{ground_energy}\n")
 
+        # 5) Close session
         session.close()
         return results
-
