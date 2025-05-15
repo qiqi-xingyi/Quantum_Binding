@@ -4,110 +4,163 @@
 # @Email : yzhan135@kent.edu
 # @File:banckwork.py
 
-import os
-from pyscf import scf
-from qiskit_nature.units import DistanceUnit
-from utils import BindingSystemBuilder
-from utils import  ActiveSpaceSelector
-from utils import QiskitProblemBuilder
-from utils import MultiVQEPipeline
-from qiskit_ibm_runtime import QiskitRuntimeService
-from utils.config_manager import ConfigManager
-import json
+import os, time, json
+import numpy as np
+from datetime import datetime
+from typing import Dict, Any, List, Tuple
+from scipy.optimize import minimize
 
-def run_scf(mol):
-    """Run RHF or ROHF SCF and return the converged mf object."""
-    if mol.spin == 0:
-        mf = scf.RHF(mol)
-    else:
-        mf = scf.ROHF(mol)
-    mf.max_cycle = 200
-    mf.level_shift = 0.2
-    mf.kernel()
-    return mf
+from qiskit_ibm_runtime import Session, EstimatorV2
+from qiskit import transpile
 
-if __name__ == "__main__":
 
-    # Fixed paths and settings
-    pdb_path       = "./data_set/1c5z/1c5z_Binding_mode.pdb"
-    plip_txt_path  = "./data_set/1c5z/1c5z_interaction.txt"
-    basis          = "sto3g"
-    result_dir     = "results_pipeline"
+class MultiVQEPipeline:
+    """
+    VQE / Adapt-VQE runner with correct hardware transpilation & layout sync.
+    """
 
-    os.makedirs(result_dir, exist_ok=True)
+    def __init__(
+        self,
+        service,
+        shots: int = 1024,
+        maxiter: int = 100,
+        optimization_level: int = 3,
+        result_dir: str = "results_vqe",
+    ):
+        self.service = service
+        self.shots = shots
+        self.maxiter = maxiter
+        self.optimization_level = optimization_level
+        self.result_dir = result_dir
+        os.makedirs(result_dir, exist_ok=True)
 
-    # Build ligand, residue, complex molecules
-    builder = BindingSystemBuilder(
-        pdb_path=pdb_path,
-        plip_txt_path=plip_txt_path,
-        basis=basis
-    )
-    molecules = {
-        'ligand':  builder.get_ligand(),
-        'residue': builder.get_residue_system(),
-        'complex': builder.get_complex_system()
-    }
-
-    # SCF + active space selection + problem & ansatz construction
-    selector  = ActiveSpaceSelector(
-        freeze_occ_threshold=1.98,
-        n_before_homo=5,
-        n_after_lumo=5
-    )
-    qp_builder = QiskitProblemBuilder(
-        basis=basis,
-        distance_unit=DistanceUnit.ANGSTROM,
-        result_dir=result_dir
-    )
-
-    problems = {}
-    for label, mol in molecules.items():
-        print(f"\n>> Preparing {label} <<")
-        mf = run_scf(mol)
-        frozen, active_e, mo_start, active_list = selector.select_active_space(mf)
-        print(f"  Frozen orbitals: {frozen}")
-        print(f"  Active e: {active_e}, orbitals start: {mo_start}, list: {active_list}")
-
-        qop, ansatz = qp_builder.build(
-            mol,
-            active_e,
-            len(active_list),
-            mo_start
+    # ------------------------------------------------------------------
+    def run(self, problems: Dict[str, Tuple[Any, Any]]) -> Dict[str, Dict[str, Any]]:
+        max_q = max(qop.num_qubits for qop, _ in problems.values())
+        backend = self.service.least_busy(
+            simulator=False, operational=True, min_num_qubits=max_q
         )
-        problems[label] = (qop, ansatz)
-        print(f"  {label.capitalize()} Hamiltonian Terms: {len(qop)}")
-        print(f"  {label.capitalize()} Qubit Num: {qop.num_qubits}")
 
-    # Initialize IBM Runtime service & VQE pipeline
-    cfg = ConfigManager("config.txt")
-    service = QiskitRuntimeService(
-        channel='ibm_quantum',
-        instance=cfg.get("INSTANCE"),
-        token=cfg.get("TOKEN")
-    )
+        session = Session(backend=backend)
+        estimator = EstimatorV2(mode=session)
+        estimator.options.default_shots = self.shots
 
-    solver = MultiVQEPipeline(
-        service=service,
-        shots=2048,
-        maxiter=50,
-        optimization_level=3,
-        result_dir=result_dir
-    )
+        results: Dict[str, Dict[str, Any]] = {}
 
-    # Run all three VQEs in one session
-    results = solver.run(problems)
+        for label, (qop, solver) in problems.items():
+            # ------------ Adapt-VQE branch -------------
+            if hasattr(solver, "compute_minimum_eigenvalue"):
+                res = solver.compute_minimum_eigenvalue(qop)
+                g_e = res.eigenvalue
+                results[label] = {"energies": [g_e], "ground_energy": g_e}
+                with open(
+                    os.path.join(self.result_dir, f"{label}_adapt_summary.json"), "w"
+                ) as f:
+                    json.dump(
+                        {
+                            "ground_energy": g_e,
+                            "num_iterations": res.num_iterations,
+                            "final_max_gradient": res.final_maximum_gradient,
+                        },
+                        f,
+                        indent=2,
+                    )
+                continue
 
-    # Save summaries
-    for label, data in results.items():
-        summary = {
-            'energies': data['energies'],
-            'ground_energy': data['ground_energy']
-        }
-        summary_path = os.path.join(result_dir, f"{label}_summary.json")
-        with open(summary_path, 'w') as f:
-            json.dump(summary, f, indent=2)
+            # ------------ Standard VQE branch ----------
+            raw_circ = solver                     # QuantumCircuit ansatz
+            n_q = raw_circ.num_qubits
 
-    print("\nAll VQE runs complete. Check", result_dir, "for detailed outputs.")
+            # ① transpile to hardware gate set, keep logical lines 0..n_q-1
+            circ_t = transpile(
+                raw_circ,
+                backend=backend,
+                optimization_level=self.optimization_level,
+                initial_layout=list(range(n_q)),
+                routing_method="basic",
+            )
+
+            # ② apply same layout to observable
+            qop_t = qop.apply_layout(circ_t.layout)
+
+            # optimisation loop
+            energy_hist: List[float] = []
+            timeline: List[Dict[str, Any]] = []
+
+            def cost_grad(pars):
+                pub = (circ_t, [qop_t], [pars])
+
+                t0 = time.monotonic()
+                job_e = estimator.run([pub])
+                ev = job_e.result()[0]
+                t1 = time.monotonic()
+
+                md = ev.metadata or {}
+                qpu_dt = md.get("execution_time", t1 - t0)
+
+                # gradient
+                t2 = time.monotonic()
+                job_g = estimator.run_gradient([pub])
+                grad = job_g.result().gradients[0]
+                t3 = time.monotonic()
+
+                idx = len(energy_hist) + 1
+                energy = ev.data.evs[0]
+                energy_hist.append(energy)
+
+                timeline.extend(
+                    [
+                        {
+                            "iter": idx,
+                            "stage": "quantum",
+                            "job_id": job_e.job_id(),
+                            "duration_s": qpu_dt,
+                        },
+                        {
+                            "iter": idx,
+                            "stage": "classical",
+                            "duration_s": t3 - t2,
+                        },
+                    ]
+                )
+                with open(
+                    os.path.join(self.result_dir, f"{label}_timeline.json"), "w"
+                ) as lf:
+                    json.dump(timeline, lf, indent=2)
+
+                print(
+                    f"{label} iter {idx}: E={energy:.6f}  "
+                    f"QPU={qpu_dt:.3f}s  CPU={(t3 - t2):.3f}s"
+                )
+                return energy, np.array(grad)
+
+            x0 = np.zeros(circ_t.num_parameters)
+            minimize(
+                fun=lambda p: cost_grad(p)[0],
+                x0=x0,
+                jac=lambda p: cost_grad(p)[1],
+                method="BFGS",
+                options={"maxiter": self.maxiter},
+            )
+
+            g_e = min(energy_hist)
+            results[label] = {"energies": energy_hist, "ground_energy": g_e}
+
+            np.savetxt(
+                os.path.join(self.result_dir, f"{label}_energies.csv"),
+                np.c_[np.arange(1, len(energy_hist) + 1), energy_hist],
+                header="Iter,Energy",
+                delimiter=",",
+                comments="",
+            )
+            with open(
+                os.path.join(self.result_dir, f"{label}_ground_energy.txt"), "w"
+            ) as gf:
+                gf.write(f"{g_e}\n")
+
+        session.close()
+        return results
+
 
 
 
