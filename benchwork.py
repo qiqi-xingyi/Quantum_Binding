@@ -51,8 +51,8 @@ if __name__ == "__main__":
     # SCF + active space selection + problem & ansatz construction
     selector  = ActiveSpaceSelector(
         freeze_occ_threshold=1.98,
-        n_before_homo=5,
-        n_after_lumo=5
+        n_before_homo=3,
+        n_after_lumo=3
     )
     qp_builder = QiskitProblemBuilder(
         basis=basis,
