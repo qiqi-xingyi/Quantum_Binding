@@ -17,6 +17,7 @@ from qiskit.quantum_info import SparsePauliOp
 from qiskit import transpile
 
 
+
 # ---------------------------------------------------------------------------
 def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
     """Split a SparsePauliOp into chunks of ≤chunk_size terms."""
