@@ -91,6 +91,7 @@ if __name__ == "__main__":
         shots=2048,
         maxiter=50,
         optimization_level=3,
+        chunk_size = 2000,
         result_dir=result_dir
     )
 

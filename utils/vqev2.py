@@ -41,7 +41,7 @@ class MultiVQEPipeline:
         service,
         shots: int = 1024,
         maxiter: int = 100,
-        chunk_size: int = 5000,           # ≤ Pauli terms per slice
+        chunk_size: int = 3000,
         optimization_level: int = 3,
         result_dir: str = "results_vqe",
     ):
