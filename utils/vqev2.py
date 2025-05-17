@@ -76,6 +76,7 @@ class MultiVQEPipeline:
                 results[label] = {"energies": [res.eigenvalue], "ground_energy": res.eigenvalue}
                 continue
 
+
             # --- Circuit VQE branch ------------------------------------
             raw_circ = solver
             circ_t = transpile(
