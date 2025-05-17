@@ -29,7 +29,6 @@ def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
         for i in range(0, len(labels), chunk_size)
     ]
 
-
 # ---------------------------------------------------------------------------
 class MultiVQEPipeline:
     """
