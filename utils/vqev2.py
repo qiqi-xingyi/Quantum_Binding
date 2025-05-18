@@ -14,26 +14,27 @@ from scipy.optimize import minimize
 
 from qiskit_ibm_runtime import Session, EstimatorV2
 from qiskit.quantum_info import SparsePauliOp
+from qiskit.circuit import QuantumCircuit
 from qiskit import transpile
 
 
-
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
-    """Split a SparsePauliOp into chunks of ≤chunk_size terms."""
+    """Split a SparsePauliOp into blocks with at most chunk_size terms."""
     labels, coeffs = op.paulis.to_labels(), op.coeffs
     return [
         SparsePauliOp.from_list(
-            [(lbl, float(c)) for lbl, c in zip(labels[i : i + chunk_size], coeffs[i : i + chunk_size])]
+            [(lbl, complex(c)) for lbl, c in zip(labels[i : i + chunk_size], coeffs[i : i + chunk_size])]
         )
         for i in range(0, len(labels), chunk_size)
     ]
 
-# ---------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 class MultiVQEPipeline:
     """
-    VQE (and Adapt-VQE) runner with Hamiltonian slicing, timeline logging,
-    and quantum/classical time breakdown.
+    VQE / Adapt-VQE runner with Hamiltonian slicing, timeline logging,
+    and quantum-vs-classical time breakdown.
     """
 
     def __init__(
@@ -53,7 +54,7 @@ class MultiVQEPipeline:
         self.result_dir = result_dir
         os.makedirs(result_dir, exist_ok=True)
 
-    # -----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def run(self, problems: Dict[str, Tuple[Any, Any]]) -> Dict[str, Dict[str, Any]]:
         max_q = max(q.num_qubits for q, _ in problems.values())
         backend = self.service.least_busy(
@@ -70,14 +71,13 @@ class MultiVQEPipeline:
             timeline: List[Dict[str, Any]] = []
             energy_hist: List[float] = []
 
-            # --- Adapt-VQE branch ---------------------------------------
+            # -------------------- Adapt-VQE branch -------------------------
             if hasattr(solver, "compute_minimum_eigenvalue"):
                 res = solver.compute_minimum_eigenvalue(qop_full)
                 results[label] = {"energies": [res.eigenvalue], "ground_energy": res.eigenvalue}
                 continue
 
-
-            # --- Circuit VQE branch ------------------------------------
+            # -------------------- circuit VQE branch ----------------------
             raw_circ = solver
             circ_t = transpile(
                 raw_circ,
@@ -87,41 +87,37 @@ class MultiVQEPipeline:
                 routing_method="basic",
             )
 
-            layout = circ_t.layout
-            qop_isa = qop_full.apply_layout(layout)  # Hamiltonian mapping to 127 qubits
+            # remove idle physical wires → circuit back to logical size
+            circ_t, _ = QuantumCircuit.remove_idle_qubits(circ_t)
 
-            slices = _chunk_pauli(qop_isa, self.chunk_size)
-            print(f"{label}: {len(slices)} slices ({len(qop_isa)} total terms)")
-
+            # Hamiltonian remains on logical register
             slices = _chunk_pauli(qop_full, self.chunk_size)
             print(f"{label}: {len(slices)} slices ({len(qop_full)} total terms)")
 
+            # --------------------------------------------------------------
             def cost_grad(params):
-                quantum_time, classical_time = 0.0, 0.0
                 energy_val = 0.0
                 grad_vec = np.zeros_like(params)
+                quantum_time = classical_time = 0.0
 
-                # iterate over Hamiltonian slices
                 for sub_op in slices:
                     pub = (circ_t, [sub_op], [params])
 
-                    # quantum execution
-                    tq0 = time.monotonic()
+                    t0 = time.monotonic()
                     e_job = estimator.run([pub])
                     res = e_job.result()[0]
-                    tq1 = time.monotonic()
+                    t1 = time.monotonic()
 
                     md = res.metadata or {}
-                    quantum_time += md.get("execution_time", tq1 - tq0)
+                    quantum_time += md.get("execution_time", t1 - t0)
                     queue_delay = None
                     if md.get("queued_at") and md.get("started_at"):
-                        qd = datetime.fromisoformat(md["started_at"].replace("Z", "+00:00")) - \
-                             datetime.fromisoformat(md["queued_at"].replace("Z", "+00:00"))
-                        queue_delay = qd.total_seconds()
+                        queued = datetime.fromisoformat(md["queued_at"].replace("Z", "+00:00"))
+                        startd = datetime.fromisoformat(md["started_at"].replace("Z", "+00:00"))
+                        queue_delay = (startd - queued).total_seconds()
 
                     energy_val += res.data.evs[0]
 
-                    # gradient execution
                     tc0 = time.monotonic()
                     g_job = estimator.run_gradient([pub])
                     grad_vec += g_job.result().gradients[0]
@@ -134,7 +130,7 @@ class MultiVQEPipeline:
                             "slice_terms": len(sub_op),
                             "stage": "quantum",
                             "job_id": e_job.job_id(),
-                            "duration_s": md.get("execution_time", tq1 - tq0),
+                            "duration_s": md.get("execution_time", t1 - t0),
                             "queue_delay_s": queue_delay,
                         }
                     )
@@ -148,9 +144,9 @@ class MultiVQEPipeline:
                 )
 
                 energy_hist.append(energy_val)
-                # live timeline write
-                with open(os.path.join(self.result_dir, f"{label}_timeline.json"), "w") as lt:
-                    json.dump(timeline, lt, indent=2)
+
+                with open(os.path.join(self.result_dir, f"{label}_timeline.json"), "w") as fp:
+                    json.dump(timeline, fp, indent=2)
 
                 print(
                     f"{label} iter {len(energy_hist)} "
@@ -158,7 +154,7 @@ class MultiVQEPipeline:
                 )
                 return energy_val, grad_vec
 
-            # run optimizer
+            # optimizer run
             x0 = np.zeros(circ_t.num_parameters)
             minimize(
                 fun=lambda p: cost_grad(p)[0],
@@ -178,10 +174,11 @@ class MultiVQEPipeline:
                 delimiter=",",
                 comments="",
             )
-            with open(os.path.join(self.result_dir, f"{label}_ground_energy.txt"), "w") as fg:
-                fg.write(f"{ground_e}\n")
+            with open(os.path.join(self.result_dir, f"{label}_ground_energy.txt"), "w") as fp:
+                fp.write(f"{ground_e}\n")
 
         session.close()
         return results
+
 
 
