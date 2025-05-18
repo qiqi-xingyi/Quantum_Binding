@@ -87,6 +87,12 @@ class MultiVQEPipeline:
                 routing_method="basic",
             )
 
+            layout = circ_t.layout
+            qop_isa = qop_full.apply_layout(layout)  # Hamiltonian mapping to 127 qubits
+
+            slices = _chunk_pauli(qop_isa, self.chunk_size)
+            print(f"{label}: {len(slices)} slices ({len(qop_isa)} total terms)")
+
             slices = _chunk_pauli(qop_full, self.chunk_size)
             print(f"{label}: {len(slices)} slices ({len(qop_full)} total terms)")
 
