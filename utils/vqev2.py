@@ -15,12 +15,31 @@ from scipy.optimize import minimize
 from qiskit_ibm_runtime import Session, EstimatorV2
 from qiskit.quantum_info import SparsePauliOp
 from qiskit import transpile
-from qiskit.circuit.utils import remove_idle_qubits      # util to drop unused wires
+from qiskit.circuit import QuantumCircuit
+
+
+# ---------------------------------------------------------------------------
+# try to import official util; otherwise fall back to local helper
+try:
+    from qiskit.circuit.utils import remove_idle_qubits  # Qiskit 0.46+
+except ImportError:
+
+    def remove_idle_qubits(circ: QuantumCircuit):
+        """Return a new circuit with unused qubits removed."""
+        used = set()
+        for inst, qargs, _ in circ.data:
+            used.update(q.index for q in qargs)
+        used = sorted(used)
+        mapping = {old: new for new, old in enumerate(used)}
+        new_circ = QuantumCircuit(len(used))
+        for inst, qargs, cargs in circ.data:
+            new_qargs = [new_circ.qubits[mapping[q.index]] for q in qargs]
+            new_circ.append(inst, new_qargs, cargs)
+        return new_circ, mapping
 
 
 # ---------------------------------------------------------------------------
 def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
-    """Split a SparsePauliOp into blocks with ≤ chunk_size terms."""
     labels, coeffs = op.paulis.to_labels(), op.coeffs
     return [
         SparsePauliOp.from_list(
@@ -32,12 +51,7 @@ def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
 
 # ---------------------------------------------------------------------------
 class MultiVQEPipeline:
-    """
-    VQE / Adapt-VQE runner
-    * Hamiltonian sliced measurement
-    * Quantum / classical timing breakdown
-    * Timeline logging
-    """
+    """Run VQE / Adapt-VQE with Hamiltonian slicing and timeline logging."""
 
     def __init__(
         self,
@@ -73,13 +87,13 @@ class MultiVQEPipeline:
             timeline: List[Dict[str, Any]] = []
             energy_hist: List[float] = []
 
-            # -------- Adapt-VQE branch ----------------------------------
+            # Adapt-VQE branch
             if hasattr(solver, "compute_minimum_eigenvalue"):
                 res = solver.compute_minimum_eigenvalue(qop_full)
                 results[label] = {"energies": [res.eigenvalue], "ground_energy": res.eigenvalue}
                 continue
 
-            # -------- Standard VQE branch -------------------------------
+            # Circuit VQE branch
             raw_circ = solver
             circ_t = transpile(
                 raw_circ,
@@ -89,10 +103,9 @@ class MultiVQEPipeline:
                 routing_method="basic",
             )
 
-            # drop idle physical wires -> circuit back to logical size
-            circ_t, _ = remove_idle_qubits(circ_t)          # now matches mapper size
+            # strip idle physical wires -> logical size
+            circ_t, _ = remove_idle_qubits(circ_t)
 
-            # Hamiltonian stays on logical register
             slices = _chunk_pauli(qop_full, self.chunk_size)
             print(f"{label}: {len(slices)} slices ({len(qop_full)} total terms)")
 
@@ -105,7 +118,7 @@ class MultiVQEPipeline:
                 for sub_op in slices:
                     pub = (circ_t, [sub_op], [params])
 
-                    # expectation value
+                    # expectation
                     tq0 = time.monotonic()
                     e_job = estimator.run([pub])
                     res = e_job.result()[0]
@@ -148,7 +161,6 @@ class MultiVQEPipeline:
                 )
 
                 energy_hist.append(energy_val)
-
                 with open(os.path.join(self.result_dir, f"{label}_timeline.json"), "w") as fp:
                     json.dump(timeline, fp, indent=2)
 
@@ -158,7 +170,7 @@ class MultiVQEPipeline:
                 )
                 return energy_val, grad_vec
 
-            # optimizer
+            # run optimizer
             x0 = np.zeros(circ_t.num_parameters)
             minimize(
                 fun=lambda p: cost_grad(p)[0],
@@ -183,6 +195,7 @@ class MultiVQEPipeline:
 
         session.close()
         return results
+
 
 
 
