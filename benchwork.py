@@ -109,7 +109,3 @@ if __name__ == "__main__":
             json.dump(summary, f, indent=2)
 
     print("\nAll VQE runs complete. Check", result_dir, "for detailed outputs.")
-
-
-
-
