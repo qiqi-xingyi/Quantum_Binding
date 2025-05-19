@@ -19,27 +19,8 @@ from qiskit.circuit import QuantumCircuit
 
 
 # ---------------------------------------------------------------------------
-# try to import official util; otherwise fall back to local helper
-try:
-    from qiskit.circuit.utils import remove_idle_qubits  # Qiskit 0.46+
-except ImportError:
-
-    def remove_idle_qubits(circ: QuantumCircuit):
-        """Return a new circuit with unused qubits removed."""
-        used = set()
-        for inst, qargs, _ in circ.data:
-            used.update(q.index for q in qargs)
-        used = sorted(used)
-        mapping = {old: new for new, old in enumerate(used)}
-        new_circ = QuantumCircuit(len(used))
-        for inst, qargs, cargs in circ.data:
-            new_qargs = [new_circ.qubits[mapping[q.index]] for q in qargs]
-            new_circ.append(inst, new_qargs, cargs)
-        return new_circ, mapping
-
-
-# ---------------------------------------------------------------------------
 def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
+    """Split a SparsePauliOp into blocks with ≤ chunk_size terms."""
     labels, coeffs = op.paulis.to_labels(), op.coeffs
     return [
         SparsePauliOp.from_list(
@@ -50,8 +31,37 @@ def _chunk_pauli(op: SparsePauliOp, chunk_size: int) -> List[SparsePauliOp]:
 
 
 # ---------------------------------------------------------------------------
+# try official util (Qiskit ≥0.46); otherwise use fallback
+try:
+    from qiskit.circuit.utils import remove_idle_qubits
+except ImportError:
+
+    def remove_idle_qubits(circ: QuantumCircuit) -> Tuple[QuantumCircuit, Dict[int, int]]:
+        """Return (new_circuit, old→new map) without idle qubits."""
+        used_idx = {
+            circ.find_bit(q).index
+            for inst, qargs, _ in circ.data
+            for q in qargs
+        }
+        used_sorted = sorted(used_idx)
+        mapping = {old: new for new, old in enumerate(used_sorted)}
+
+        new_circ = QuantumCircuit(len(used_sorted))
+        for inst, qargs, cargs in circ.data:
+            new_qs = [
+                new_circ.qubits[mapping[circ.find_bit(q).index]] for q in qargs
+            ]
+            new_circ.append(inst, new_qs, cargs)
+
+        return new_circ, mapping
+
+
+# ---------------------------------------------------------------------------
 class MultiVQEPipeline:
-    """Run VQE / Adapt-VQE with Hamiltonian slicing and timeline logging."""
+    """
+    VQE / Adapt-VQE runner with Hamiltonian slicing, timeline logging,
+    and quantum/classical time breakdown.
+    """
 
     def __init__(
         self,
@@ -87,13 +97,13 @@ class MultiVQEPipeline:
             timeline: List[Dict[str, Any]] = []
             energy_hist: List[float] = []
 
-            # Adapt-VQE branch
+            # ---------------- Adapt-VQE -----------------
             if hasattr(solver, "compute_minimum_eigenvalue"):
                 res = solver.compute_minimum_eigenvalue(qop_full)
                 results[label] = {"energies": [res.eigenvalue], "ground_energy": res.eigenvalue}
                 continue
 
-            # Circuit VQE branch
+            # ---------------- Circuit VQE ---------------
             raw_circ = solver
             circ_t = transpile(
                 raw_circ,
@@ -103,13 +113,11 @@ class MultiVQEPipeline:
                 routing_method="basic",
             )
 
-            # strip idle physical wires -> logical size
-            circ_t, _ = remove_idle_qubits(circ_t)
-
+            circ_t, _ = remove_idle_qubits(circ_t)  # shrink to logical width
             slices = _chunk_pauli(qop_full, self.chunk_size)
             print(f"{label}: {len(slices)} slices ({len(qop_full)} total terms)")
 
-            # ------------------------------------------------------------
+            # --------------------------------------------
             def cost_grad(params):
                 energy_val = 0.0
                 grad_vec = np.zeros_like(params)
@@ -118,7 +126,6 @@ class MultiVQEPipeline:
                 for sub_op in slices:
                     pub = (circ_t, [sub_op], [params])
 
-                    # expectation
                     tq0 = time.monotonic()
                     e_job = estimator.run([pub])
                     res = e_job.result()[0]
@@ -134,7 +141,6 @@ class MultiVQEPipeline:
 
                     energy_val += res.data.evs[0]
 
-                    # gradient
                     tc0 = time.monotonic()
                     g_job = estimator.run_gradient([pub])
                     grad_vec += g_job.result().gradients[0]
@@ -170,7 +176,7 @@ class MultiVQEPipeline:
                 )
                 return energy_val, grad_vec
 
-            # run optimizer
+            # optimizer
             x0 = np.zeros(circ_t.num_parameters)
             minimize(
                 fun=lambda p: cost_grad(p)[0],
@@ -195,6 +201,7 @@ class MultiVQEPipeline:
 
         session.close()
         return results
+
 
 
 
