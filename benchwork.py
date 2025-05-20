@@ -97,7 +97,7 @@ class MultiVQEPipeline:
                 routing_method="basic",
             )
             circ_t, kept_old = remove_idle_qubits(circ_t)   # logical shrink
-            proj_op = _project_operator(qop_full, kept_old) # 同步截断
+            proj_op = _project_operator(qop_full, kept_old)
             slices = _chunk_pauli(proj_op, self.chunk_size)
             print(f"{label}: {len(slices)} slices ({len(proj_op)} terms)")
 
