@@ -51,7 +51,6 @@ except ImportError:
 
 # ---------------------------------------------------------------------------
 class MultiVQEPipeline:
-    """VQE / Adapt-VQE runner (方案 A：逻辑尺寸一致)"""
 
     def __init__(
         self,
