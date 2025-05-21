@@ -4,7 +4,6 @@
 # @Email : yzhan135@kent.edu
 # @File:vqev2.py
 
-# utils/vqev2.py
 import os
 import time
 import json
@@ -200,11 +199,3 @@ class MultiVQEPipeline:
 
         session.close()
         return results
-
-
-
-
-
-
-
-
