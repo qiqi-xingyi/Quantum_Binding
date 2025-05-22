@@ -8,14 +8,15 @@
 MultiVQEPipeline
 ================
 End-to-end VQE / Adapt-VQE driver that
+
 * chooses the least-busy IBM Quantum backend,
-* keeps a single Runtime Session for iterative jobs,
-* uploads *high-level* circuits (cloud transpilation),
-* chunks large Hamiltonians,
-* uses analytic gradients + BFGS, and
+* keeps **one** Runtime Session for all iterative jobs,
+* uploads high-level circuits so that compilation happens in the cloud,
+* chunks large Hamiltonians to avoid payload limits,
+* uses analytic gradients + BFGS,
 * records detailed timing / energy traces.
 
-Qiskit Runtime >= 0.13.0 (primitives V2) required.
+Requires: qiskit-ibm-runtime ≥ 0.13  (primitives V2).
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import time
 import json
 from datetime import datetime
 from inspect import signature
-from typing import Dict, Any, List, Tuple, Iterable
+from typing import Dict, Any, List, Tuple
 
 import numpy as np
 from scipy.optimize import minimize
@@ -36,25 +37,26 @@ from qiskit_ibm_runtime import (
     Session,
     EstimatorV2,
     RuntimeJobFailureError,
-    Options,  # generic Runtime options class
 )
+from qiskit_ibm_runtime.options import EstimatorOptions   # V2-specific options
+
 
 # --------------------------------------------------------------------------- #
 # Helper utilities
 # --------------------------------------------------------------------------- #
 def _chunk_pauli(op: SparsePauliOp, size: int) -> List[SparsePauliOp]:
-    """Split a SparsePauliOp into chunks with ≤ ``size`` terms."""
+    """Split a SparsePauliOp into chunks with ≤ *size* Pauli terms."""
     labels, coeffs = op.paulis.to_labels(), op.coeffs
     return [
         SparsePauliOp.from_list(
-            [(lbl, complex(c)) for lbl, c in zip(labels[i : i + size], coeffs[i : i + size])]
+            [(lbl, complex(c)) for lbl, c in zip(labels[i:i + size], coeffs[i:i + size])]
         )
         for i in range(0, len(labels), size)
     ]
 
 
 def _project_operator(op: SparsePauliOp, keep: List[int]) -> SparsePauliOp:
-    """Project *op* onto selected qubits (same order)."""
+    """Project *op* onto qubits listed in *keep* (order preserved)."""
     new_labels = ["".join(lbl[q] for q in keep) for lbl in op.paulis.to_labels()]
     pairs = list(zip(new_labels, op.coeffs))
 
@@ -63,31 +65,30 @@ def _project_operator(op: SparsePauliOp, keep: List[int]) -> SparsePauliOp:
     return SparsePauliOp.from_list(pairs).simplify()
 
 
-# --------------------------------------------------------------------------- #
-# remove_idle_qubits compatibility shim
+# remove_idle_qubits fallback for older Terra versions
 try:
     from qiskit.circuit.utils import remove_idle_qubits
-except ImportError:  # fallback for older Terra
+except ImportError:  # pragma: no cover
     def remove_idle_qubits(circ: QuantumCircuit) -> Tuple[QuantumCircuit, List[int]]:
         active = sorted({circ.find_bit(q).index for inst, qargs, _ in circ.data for q in qargs})
         mapping = {old: new for new, old in enumerate(active)}
         new_circ = QuantumCircuit(len(active))
         for inst, qargs, cargs in circ.data:
-            new_qs = [new_circ.qubits[mapping[circ.find_bit(q).index]] for q in qargs]
-            new_circ.append(inst, new_qs, cargs)
+            new_q = [new_circ.qubits[mapping[circ.find_bit(q).index]] for q in qargs]
+            new_circ.append(inst, new_q, cargs)
         return new_circ, active
 
 
 # --------------------------------------------------------------------------- #
 class MultiVQEPipeline:
-    """Feature-rich VQE / Adapt-VQE runner with cloud transpilation support."""
+    """Feature-rich VQE / Adapt-VQE runner that relies on cloud transpilation."""
 
     def __init__(
         self,
         service,
         shots: int = 1024,
         maxiter: int = 100,
-        chunk_size: int = 2000,
+        chunk_size: int = 2_000,
         optimization_level: int = 3,
         result_dir: str = "results_vqe",
     ):
@@ -101,10 +102,7 @@ class MultiVQEPipeline:
 
     # --------------------------------------------------------------------- #
     def _safe_estimate(self, pub, estimator: EstimatorV2):
-        """
-        Run Estimator; if payload exceeds limit (error 8055) recursively bisect
-        the Pauli operator until it fits.
-        """
+        """Run Estimator; if payload too large (error 8055) bisect the Pauli op."""
         circ, [obs], [theta] = pub
         try:
             return estimator.run([pub]).result()[0]
@@ -122,68 +120,72 @@ class MultiVQEPipeline:
 
     # --------------------------------------------------------------------- #
     def run(self, problems: Dict[str, Tuple[Any, Any]]) -> Dict[str, Dict[str, Any]]:
-        # choose backend
+        # 1) choose backend
         backend = self.service.least_busy(
             simulator=False,
             operational=True,
             min_num_qubits=max(q.num_qubits for q, _ in problems.values()),
         )
 
-        # Runtime options
-        opts = Options()
-        opts.default_shots = self.shots
-        opts.transpilation.skip_transpilation = False
-        opts.transpilation.optimization_level = self.opt_level
+        # 2) build EstimatorOptions (V2)
+        opts = EstimatorOptions()
+        if hasattr(opts, "default_shots"):           # current API
+            opts.default_shots = self.shots
+        elif hasattr(opts, "shots"):                 # future proof
+            opts.shots = self.shots
 
-        # one session for all iterations
+        # cloud compilation is default; only set if field exists
+        if hasattr(opts, "transpilation"):
+            opts.transpilation.skip_transpilation = False
+            opts.transpilation.optimization_level = self.opt_level
+
+        # 3) open one session for all iterations
         session = Session(backend=backend)
         estimator = EstimatorV2(session=session, options=opts)
 
         results: Dict[str, Dict[str, Any]] = {}
 
-        for label, (qop_full, solver) in problems.items():
+        for label, (ham_full, solver) in problems.items():
             timeline: List[Dict[str, Any]] = []
             energies: List[float] = []
 
-            # -------- Adapt-VQE branch ----------------------------------- #
+            # ------- Adapt-VQE branch ------------------------------------ #
             if hasattr(solver, "compute_minimum_eigenvalue"):
-                res = solver.compute_minimum_eigenvalue(qop_full)
+                res = solver.compute_minimum_eigenvalue(ham_full)
                 results[label] = {"energies": [res.eigenvalue], "ground_energy": res.eigenvalue}
                 continue
 
-            # -------- Standard VQE branch -------------------------------- #
-            circ_raw, kept_old = remove_idle_qubits(solver)
-            proj_op = _project_operator(qop_full, kept_old)
-            slices = _chunk_pauli(proj_op, self.chunk_size)
-            print(f"{label}: {len(slices)} slices ({len(proj_op)} terms)")
+            # ------- Standard VQE branch --------------------------------- #
+            circ_raw, kept = remove_idle_qubits(solver)
+            ham_proj = _project_operator(ham_full, kept)
+            slices = _chunk_pauli(ham_proj, self.chunk_size)
+            print(f"{label}: {len(slices)} slices ({len(ham_proj)} terms)")
 
             # -------------------------------------------------------------- #
             def cost_grad(theta: np.ndarray):
-                E, grad = 0.0, np.zeros_like(theta)
+                E_val, grad_vec = 0.0, np.zeros_like(theta)
                 qtime = ctime = 0.0
 
                 for sub in slices:
                     pub = (circ_raw, [sub], [theta])
 
-                    tq0 = time.monotonic()
+                    t0 = time.monotonic()
                     res = self._safe_estimate(pub, estimator)
-                    tq1 = time.monotonic()
+                    t1 = time.monotonic()
 
                     md = res.metadata or {}
-                    qtime += md.get("execution_time", tq1 - tq0)
+                    qtime += md.get("execution_time", t1 - t0)
+                    delay = (
+                        (datetime.fromisoformat(md["started_at"].replace("Z", "+00:00"))
+                         - datetime.fromisoformat(md["queued_at"].replace("Z", "+00:00"))
+                         ).total_seconds()
+                        if md.get("queued_at") and md.get("started_at") else None
+                    )
 
-                    if md.get("queued_at") and md.get("started_at"):
-                        delay = (
-                            datetime.fromisoformat(md["started_at"].replace("Z", "+00:00"))
-                            - datetime.fromisoformat(md["queued_at"].replace("Z", "+00:00"))
-                        ).total_seconds()
-                    else:
-                        delay = None
-
-                    E += res.data.evs[0]
+                    E_val += res.data.evs[0]
 
                     tc0 = time.monotonic()
-                    grad += estimator.run_gradient([pub]).result().gradients[0]
+                    grad_vec += estimator.run_gradient([pub]).result().gradients[0]
                     ctime += time.monotonic() - tc0
 
                     timeline.append(
@@ -191,7 +193,7 @@ class MultiVQEPipeline:
                             "iter": len(energies) + 1,
                             "slice_terms": len(sub),
                             "stage": "quantum",
-                            "duration_s": md.get("execution_time", tq1 - tq0),
+                            "duration_s": md.get("execution_time", t1 - t0),
                             "queue_delay_s": delay,
                         }
                     )
@@ -199,7 +201,7 @@ class MultiVQEPipeline:
                 timeline.append(
                     {"iter": len(energies) + 1, "stage": "classical", "duration_s": ctime}
                 )
-                energies.append(E)
+                energies.append(E_val)
 
                 json.dump(
                     timeline,
@@ -208,9 +210,10 @@ class MultiVQEPipeline:
                 )
 
                 print(
-                    f"{label} iter {len(energies)}  E={E:.6f}  QPU={qtime:.3f}s  CPU={ctime:.3f}s"
+                    f"{label} iter {len(energies)}  E={E_val:.6f}  "
+                    f"QPU={qtime:.3f}s  CPU={ctime:.3f}s"
                 )
-                return E, grad
+                return E_val, grad_vec
 
             theta0 = np.zeros(circ_raw.num_parameters)
             minimize(
