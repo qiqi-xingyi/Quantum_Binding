@@ -134,7 +134,6 @@ class MultiVQEPipeline:
         # 2) Estimator options
         opts = EstimatorOptions()
         opts.default_shots = self.shots
-        opts.transpilation.skip_transpilation = True  # we compile locally
 
         # 3) single session
         session = Session(backend=backend)
