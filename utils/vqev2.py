@@ -112,7 +112,7 @@ class MultiVQEPipeline:
 
         # Build a single Session + Estimator, explicit cloud‑side transpilation
         opts = Options()
-        opts.default_shots = self.shots
+        opts.execution.shots = self.shots  # set the number of shots for all PUBs
         opts.transpilation.skip_transpilation = False  # enable cloud compilation
         opts.transpilation.optimization_level = self.opt_level
 
