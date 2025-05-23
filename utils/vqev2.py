@@ -126,19 +126,14 @@ class MultiVQEPipeline:
         for label, (ham_full, ansatz) in problems.items():
             print(f"\n=== {label} ===")
 
-            # 1. transpile to ISA
             circ_trim, keep = remove_idle_qubits(ansatz)
             ham_proj        = project_operator(ham_full, keep)
-            pm              = generate_preset_pass_manager(backend, optimization_level=self.opt_level)
+            pm              = generate_preset_pass_manager(optimization_level=self.opt_level, backend=backend)
             circ_isa        = pm.run(circ_trim)
             ham_isa         = ham_proj.apply_layout(circ_isa.layout)
 
-            # 2. upload circuit once (EstimatorV2.upload_circuits)
-            tmp_est = EstimatorV2(mode=backend, options=opts)
-            cid     = tmp_est.upload_circuits([circ_isa])[0]
-
             slices = chunk_pauli(ham_isa, self.chunk_size)
-            pub_tpl = [(cid, [sl], None) for sl in slices]
+            pub_tpl = [(ham_isa, [sl], None) for sl in slices]
 
             timeline: List[Dict] = []
             energies: List[float] = []
@@ -181,7 +176,7 @@ class MultiVQEPipeline:
 
                 return tot_e
 
-            # 4. classical optimization (SciPy BFGS)
+
             theta0 = np.zeros(circ_isa.num_parameters)
 
             def cb(xk):
@@ -209,7 +204,3 @@ class MultiVQEPipeline:
             results[label] = {"energies": energies, "ground_energy": min(energies)}
 
         return results
-
-
-
-
