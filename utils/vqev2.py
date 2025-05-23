@@ -54,7 +54,7 @@ class MultiVQEPipeline:
         lr: float = 0.1,
         eps: float = 1e-3,
         min_qubit_num: int = 10,
-        chunk_size: int = 500,
+        chunk_size: int = 100,
         batch_size: int = 50,
         result_dir: str = "results_vqe",
     ):
