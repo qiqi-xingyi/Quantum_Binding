@@ -118,6 +118,7 @@ class MultiVQEPipeline:
                     print(f" iter {len(energies):3d} | E = {energies[-1]:.6f}")
 
                 x0 = np.random.random(ansatz_isa.num_parameters)
+
                 res = minimize(
                     fun=cost_fn,
                     x0=x0,
