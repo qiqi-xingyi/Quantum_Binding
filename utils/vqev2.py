@@ -5,244 +5,225 @@
 # @File:vqev2.py
 
 """
-MultiVQEPipeline
-================
-A VQE / Adapt-VQE driver that
+MultiVQEPipeline — batch version (all-English)
+=============================================
 
-* picks the least-busy IBMQ backend,
-* keeps one Runtime Session for all iterations,
-* locally transpiles circuits to ISA level,
-* chunks large Hamiltonians (auto-bisect on error 8055),
-* uses analytic gradients + BFGS,
-* logs detailed timing / energy traces.
-
-Tested with qiskit-ibm-runtime 0.13.0 (primitives V2).
+Features
+--------
+* Local ISA-level transpilation
+* Circuit uploaded once; subsequent PUBs reference its circuit_id
+* Energy and (when available) analytic gradient computed in **Batch** mode
+  to avoid payload-size error 8055
+* Falls back to finite-difference gradients if `EstimatorGradientV2`
+  is not available
+* Supports BFGS optimization with per-iteration energy logging
+* Single entry point: `run({label: (hamiltonian, ansatz)})`
+  returns energies and ground state for each label
 """
 
-from __future__ import annotations
 
-import os
-import time
-import json
+import os, json, time
 from datetime import datetime
-from inspect import signature
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Iterable
 
 import numpy as np
 from scipy.optimize import minimize
+
 from qiskit.circuit import QuantumCircuit
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
 from qiskit_ibm_runtime import (
-    Session,
     EstimatorV2,
+    EstimatorGradientV2,
+    Batch,
     RuntimeJobFailureError,
 )
 from qiskit_ibm_runtime.options import EstimatorOptions
 
 
 # --------------------------------------------------------------------------- #
-# Helper utilities
-# --------------------------------------------------------------------------- #
+# Utilities
 def _chunk_pauli(op: SparsePauliOp, size: int) -> List[SparsePauliOp]:
-    """Split a SparsePauliOp into ≤ *size*-term chunks."""
     labels, coeffs = op.paulis.to_labels(), op.coeffs
     return [
         SparsePauliOp.from_list(
-            [(lbl, complex(c)) for lbl, c in zip(labels[i:i + size], coeffs[i:i + size])]
+            [(lbl, complex(c)) for lbl, c in zip(labels[i : i + size], coeffs[i : i + size])]
         )
         for i in range(0, len(labels), size)
     ]
 
 
 def _project_operator(op: SparsePauliOp, keep: List[int]) -> SparsePauliOp:
-    """Project *op* onto the qubits listed in *keep* (order preserved)."""
     new_labels = ["".join(lbl[q] for q in keep) for lbl in op.paulis.to_labels()]
-    pairs = list(zip(new_labels, op.coeffs))
-
-    if "ignore_pauli_phase" in signature(SparsePauliOp.from_list).parameters:
-        return SparsePauliOp.from_list(pairs, ignore_pauli_phase=True)
-    return SparsePauliOp.from_list(pairs).simplify()
+    return SparsePauliOp.from_list(
+        list(zip(new_labels, op.coeffs)), ignore_pauli_phase=True
+    )
 
 
-# remove_idle_qubits fallback for older Terra
 try:
     from qiskit.circuit.utils import remove_idle_qubits
-except ImportError:  # pragma: no cover
-    def remove_idle_qubits(circ: QuantumCircuit) -> Tuple[QuantumCircuit, List[int]]:
+except ImportError:  # Terra < 0.46 fallback
+    def remove_idle_qubits(circ: QuantumCircuit):
         active = sorted({circ.find_bit(q).index for inst, qargs, _ in circ.data for q in qargs})
         mapping = {old: new for new, old in enumerate(active)}
-        out = QuantumCircuit(len(active))
+        new_circ = QuantumCircuit(len(active))
         for inst, qargs, cargs in circ.data:
-            new_qs = [out.qubits[mapping[circ.find_bit(q).index]] for q in qargs]
-            out.append(inst, new_qs, cargs)
-        return out, active
+            new_qs = [new_circ.qubits[mapping[circ.find_bit(q).index]] for q in qargs]
+            new_circ.append(inst, new_qs, cargs)
+        return new_circ, active
+
+
+def _partition(seq: List, size: int) -> Iterable[List]:
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
 
 
 # --------------------------------------------------------------------------- #
 class MultiVQEPipeline:
-    """Full-featured VQE / Adapt-VQE runner with local transpilation & cloud execution."""
+    """
+    Parameters
+    ----------
+    service : QiskitRuntimeService
+        IBM Quantum runtime service instance.
+    shots : int
+        Shots per estimator/gradient call.
+    maxiter : int
+        Maximum classical optimizer iterations.
+    chunk_size : int
+        Max Pauli terms per slice (limits observable payload).
+    batch_size : int
+        Max PUBs per Runtime job (≤100 recommended).
+    opt_level : int
+        Transpiler optimization level.
+    result_dir : str
+        Directory to store output files (not used in this minimal version).
+    """
 
     def __init__(
         self,
         service,
         shots: int = 1024,
         maxiter: int = 100,
-        chunk_size: int = 2_000,
-        optimization_level: int = 3,
+        chunk_size: int = 2000,
+        batch_size: int = 50,
+        opt_level: int = 3,
         result_dir: str = "results_vqe",
     ):
         self.service = service
         self.shots = shots
         self.maxiter = maxiter
         self.chunk_size = chunk_size
-        self.opt_level = optimization_level
+        self.batch_size = batch_size
+        self.opt_level = opt_level
         self.result_dir = result_dir
         os.makedirs(result_dir, exist_ok=True)
 
     # --------------------------------------------------------------------- #
-    def _safe_estimate(self, pub, estimator: EstimatorV2):
-        """
-        Submit a single PUB; on payload-too-large (error 8055) recursively bisect
-        the Pauli operator until it fits.
-        """
-        circ, [obs], [theta] = pub
-        try:
-            return estimator.run([pub]).result()[0]
-        except RuntimeJobFailureError as err:
-            if "8055" in str(err) and len(obs) > 1:
-                mid = len(obs) // 2
-                left = SparsePauliOp(obs.paulis[:mid], obs.coeffs[:mid])
-                right = SparsePauliOp(obs.paulis[mid:], obs.coeffs[mid:])
-                res_l = self._safe_estimate((circ, [left], [theta]), estimator)
-                res_r = self._safe_estimate((circ, [right], [theta]), estimator)
-                res_l.data.evs[0] += res_r.data.evs[0]
-                res_l.gradients[0] += res_r.gradients[0]
-                return res_l
-            raise
+    def _upload_circuit(self, backend, circuit, opts) -> int:
+        """Upload a single circuit and return its circuit_id."""
+        tmp_est = EstimatorV2(mode=backend, options=opts)
+        return tmp_est.upload_circuits([circuit])[0]
 
     # --------------------------------------------------------------------- #
-    def run(self, problems: Dict[str, Tuple[Any, Any]]) -> Dict[str, Dict[str, Any]]:
-        # 1) choose backend
+    def run(self, problems: Dict[str, Tuple[Any, Any]]):
         backend = self.service.least_busy(
             simulator=False,
             operational=True,
             min_num_qubits=max(q.num_qubits for q, _ in problems.values()),
         )
 
-        # 2) Estimator options
-        opts = EstimatorOptions()
-        opts.default_shots = self.shots
+        options = EstimatorOptions()
+        options.default_shots = self.shots
 
-        # 3) single session
-        session = Session(backend=backend)
-        estimator = EstimatorV2(mode=session, options=opts)
+        all_results = {}
 
-        results: Dict[str, Dict[str, Any]] = {}
+        for label, (ham_full, ansatz) in problems.items():
+            print(f"\n=== {label} ===")
 
-        for label, (ham_full, solver) in problems.items():
-            timeline: List[Dict[str, Any]] = []
-            energies: List[float] = []
-
-            # ---------- Adapt-VQE branch ------------------------------- #
-            if hasattr(solver, "compute_minimum_eigenvalue"):
-                res = solver.compute_minimum_eigenvalue(ham_full)
-                results[label] = {"energies": [res.eigenvalue], "ground_energy": res.eigenvalue}
-                continue
-
-            # ---------- Standard VQE branch --------------------------- #
-            # a) remove idle qubits
-            circ_hl, kept = remove_idle_qubits(solver)
+            # 1) idle-qubit removal and local ISA transpilation
+            circ_trim, kept = remove_idle_qubits(ansatz)
             ham_proj = _project_operator(ham_full, kept)
+            pm = generate_preset_pass_manager(backend, optimization_level=self.opt_level)
+            circ_isa = pm.run(circ_trim)
+            ham_isa = ham_proj.apply_layout(circ_isa.layout)
 
-            # b) local transpilation to ISA level
-            pm = generate_preset_pass_manager(
-                backend=backend, optimization_level=self.opt_level
-            )
-            circ_isa = pm.run(circ_hl)
-            ham_isa = ham_proj.apply_layout(layout=circ_isa.layout)
+            # 2) single upload → circuit_id
+            circuit_id = self._upload_circuit(backend, circ_isa, options)
 
-            # c) chunk Hamiltonian
+            # 3) build PUB list
             slices = _chunk_pauli(ham_isa, self.chunk_size)
-            print(f"{label}: {len(slices)} slices ({len(ham_isa)} terms)")
+            pub_template = [(circuit_id, [sl], None) for sl in slices]
+            print(f"slices: {len(slices)}, chunk_size: {self.chunk_size}")
 
-            # ---------------------------------------------------------- #
-            def cost_grad(theta: np.ndarray):
-                E_val, grad_vec = 0.0, np.zeros_like(theta)
-                qtime = ctime = 0.0
+            # 4) cost & gradient via Batch mode
+            def energy_grad(theta: np.ndarray):
+                pubs = [(cid, obs, [theta]) for cid, obs, _ in pub_template]
+                batches = list(_partition(pubs, self.batch_size))
 
-                for sub in slices:
-                    pub = (circ_isa, [sub], [theta])
+                energy_total = 0.0
+                grad_total = np.zeros_like(theta)
 
-                    t0 = time.monotonic()
-                    res = self._safe_estimate(pub, estimator)
-                    t1 = time.monotonic()
-                    md = res.metadata or {}
-                    qtime += md.get("execution_time", t1 - t0)
+                with Batch(backend=backend):
+                    est = EstimatorV2(options=options)
+                    try:
+                        grad_prim = EstimatorGradientV2(options=options)
+                        grad_available = True
+                    except Exception:
+                        grad_available = False
 
-                    if md.get("queued_at") and md.get("started_at"):
-                        delay = (
-                            datetime.fromisoformat(md["started_at"].replace("Z", "+00:00"))
-                            - datetime.fromisoformat(md["queued_at"].replace("Z", "+00:00"))
-                        ).total_seconds()
-                    else:
-                        delay = None
+                    # submit energy jobs
+                    e_jobs = [est.run(b) for b in batches]
 
-                    E_val += res.data.evs[0]
+                    # submit gradient jobs if available
+                    g_jobs = [grad_prim.run(b) for b in batches] if grad_available else []
 
-                    tc0 = time.monotonic()
-                    grad_vec += estimator.run_gradient([pub]).result().gradients[0]
-                    ctime += time.monotonic() - tc0
+                # aggregate energies
+                for job in e_jobs:
+                    result = job.result()[0]
+                    energy_total += sum(result.data.evs)
 
-                    timeline.append(
-                        {
-                            "iter": len(energies) + 1,
-                            "slice_terms": len(sub),
-                            "stage": "quantum",
-                            "duration_s": md.get("execution_time", t1 - t0),
-                            "queue_delay_s": delay,
-                        }
-                    )
+                # aggregate gradients
+                if grad_available:
+                    for job in g_jobs:
+                        grad_total += job.result()[0].data.gradients[0]
+                else:
+                    # finite-difference fallback (cheap: slices already small)
+                    eps = 1e-3
+                    for k in range(len(theta)):
+                        t_plus = theta.copy()
+                        t_plus[k] += eps
+                        pubs_fd = [(cid, obs, [t_plus]) for cid, obs, _ in pub_template]
+                        fd_batches = list(_partition(pubs_fd, self.batch_size))
+                        with Batch(backend=backend):
+                            est_fd = EstimatorV2(options=options)
+                            fd_jobs = [est_fd.run(b) for b in fd_batches]
+                        e_plus = sum(sum(j.result()[0].data.evs) for j in fd_jobs)
+                        grad_total[k] = (e_plus - energy_total) / eps
 
-                timeline.append(
-                    {"iter": len(energies) + 1, "stage": "classical", "duration_s": ctime}
-                )
-                energies.append(E_val)
-
-                json.dump(
-                    timeline,
-                    open(f"{self.result_dir}/{label}_timeline.json", "w"),
-                    indent=2,
-                )
-
-                print(
-                    f"{label} iter {len(energies)}  "
-                    f"E={E_val:.6f}  QPU={qtime:.3f}s  CPU={ctime:.3f}s"
-                )
-                return E_val, grad_vec
+                return energy_total, grad_total
 
             theta0 = np.zeros(circ_isa.num_parameters)
+            history = []
+
+            def _callback(xk):
+                energy, _ = energy_grad(xk)
+                history.append(energy)
+                print(f"iter {len(history)} | E = {energy:.6f}")
+
             minimize(
-                fun=lambda p: cost_grad(p)[0],
+                fun=lambda p: energy_grad(p)[0],
+                jac=lambda p: energy_grad(p)[1],
                 x0=theta0,
-                jac=lambda p: cost_grad(p)[1],
                 method="BFGS",
+                callback=_callback,
                 options={"maxiter": self.maxiter},
             )
 
-            ground = min(energies)
-            results[label] = {"energies": energies, "ground_energy": ground}
+            all_results[label] = {
+                "energies": history,
+                "ground_energy": min(history),
+            }
 
-            np.savetxt(
-                f"{self.result_dir}/{label}_energies.csv",
-                np.c_[range(1, len(energies) + 1), energies],
-                header="iter,energy",
-                delimiter=",",
-                comments="",
-            )
-            with open(f"{self.result_dir}/{label}_ground_energy.txt", "w") as fp:
-                fp.write(f"{ground}\n")
+        return all_results
 
-        session.close()
-        return results
