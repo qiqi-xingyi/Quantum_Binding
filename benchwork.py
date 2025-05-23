@@ -74,6 +74,7 @@ if __name__ == "__main__":
             len(active_list),
             mo_start
         )
+
         problems[label] = (qop, ansatz)
         print(f"  {label.capitalize()} Hamiltonian Terms: {len(qop)}")
         print(f"  {label.capitalize()} Qubit Num: {qop.num_qubits}")
@@ -86,15 +87,18 @@ if __name__ == "__main__":
         token=cfg.get("TOKEN")
     )
 
+    ####################################
+
     solver = MultiVQEPipeline(
         service=service,
         shots=2000,
         maxiter=100,
-        opt_level=3,
     )
 
     # Run all three VQEs in one session
     results = solver.run(problems)
+
+    ####################################
 
     # Save summaries
     for label, data in results.items():
