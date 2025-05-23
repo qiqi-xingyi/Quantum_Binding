@@ -90,9 +90,7 @@ if __name__ == "__main__":
         service=service,
         shots=2048,
         maxiter=50,
-        opt_level=3,
-        chunk_size = 500,
-        result_dir=result_dir
+        optimization_level=3,
     )
 
     # Run all three VQEs in one session
