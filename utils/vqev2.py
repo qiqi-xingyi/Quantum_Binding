@@ -16,6 +16,29 @@ from scipy.optimize import minimize
 
 from qiskit.circuit import QuantumCircuit
 from qiskit.quantum_info import SparsePauliOp
+from qiskit.circuit import QuantumCircuit
+
+try:
+    from qiskit.circuit.utils import remove_idle_qubits
+except ImportError:
+
+    def remove_idle_qubits(circ: QuantumCircuit):
+        """
+        Remove idle (never used) qubits from circ,
+        returning (new_circuit, kept_indices).
+        """
+        active = sorted({
+            circ.find_bit(q).index
+            for inst, qargs, _ in circ.data
+            for q in qargs
+        })
+        mapping = {old: new for new, old in enumerate(active)}
+        new_c = QuantumCircuit(len(active))
+        for inst, qargs, cargs in circ.data:
+            new_qs = [new_c.qubits[mapping[circ.find_bit(q).index]] for q in qargs]
+            new_c.append(inst, new_qs, cargs)
+        return new_c, active
+
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_ibm_runtime import Session, EstimatorV2, Batch
 from qiskit_ibm_runtime.options import EstimatorOptions
@@ -40,9 +63,9 @@ def _partition(seq: List, size: int) -> Iterable[List]:
 class MultiVQEPipeline:
     """
     Single‐Session, multi‐problem VQE using finite‐difference BFGS.
-    Each Hamiltonian is chunked to avoid oversized payloads, and
-    all chunks across all problems are submitted in batches.
-    Energies are printed per iteration upon result retrieval.
+    - remove_idle_qubits  → shrink circuits
+    - chunk_pauli by self.chunk_size  → avoid oversized observables
+    - Session + Batch  → cache电路＋并行提交
     """
 
     def __init__(
@@ -78,7 +101,7 @@ class MultiVQEPipeline:
         )
 
     def _generate_pass_manager(self, backend):
-        # signature: generate_preset_pass_manager(optimization_level, backend=...)
+        # generate_preset_pass_manager(optimization_level, backend=...)
         return generate_preset_pass_manager(
             optimization_level=self.opt_level,
             backend=backend,
@@ -87,7 +110,7 @@ class MultiVQEPipeline:
     def run(self, problems: Dict[str, Tuple[SparsePauliOp, QuantumCircuit]]):
         backend = self._select_backend()
 
-        # 1) Precompile ansatz + layout and chunk each Hamiltonian
+        # 1) 预处理：去除闲置 qubit + 本地 ISA 编译 + 哈密顿量切片
         ansatz_isas: Dict[str, QuantumCircuit] = {}
         ham_chunks:  Dict[str, List[SparsePauliOp]] = {}
         thetas:      Dict[str, np.ndarray]      = {}
@@ -96,110 +119,116 @@ class MultiVQEPipeline:
 
         pm = self._generate_pass_manager(backend)
         for label, (ham, ansatz) in problems.items():
-            isa = pm.run(ansatz)
+            # 去除所有 idle qubits
+            circ_trim, keep = remove_idle_qubits(ansatz)
+            # 本地 ISA 级别编译
+            isa = pm.run(circ_trim)
             ansatz_isas[label] = isa
+            # 对齐哈密顿量 qubit 布局
             h_isa = ham.apply_layout(isa.layout)
+            # 切片到 ≤chunk_size 项
             ham_chunks[label] = _chunk_pauli(h_isa, self.chunk_size)
             thetas[label]     = np.zeros(isa.num_parameters)
             energies[label]   = []
             timeline[label]   = []
 
-        # 2) Open one Session & Estimator
+        # 2) 单一 Session & EstimatorV2
         with Session(backend=backend) as session:
-            opts = EstimatorOptions()
+            opts        = EstimatorOptions()
             opts.default_shots = self.shots
-            estimator = EstimatorV2(mode=session, options=opts)
+            estimator   = EstimatorV2(mode=session, options=opts)
 
-            # 3) Optimization loop
+            # 3) 优化迭代
             for it in range(1, self.maxiter + 1):
-                # Build list of (label, pub) pairs for all chunks of all problems
+                # 构建所有 label 的所有 chunk PUB
                 labeled_pubs: List[Tuple[str, Tuple]] = []
                 for label in problems:
-                    theta_list = thetas[label].tolist()
-                    for chunk in ham_chunks[label]:
+                    t_list = thetas[label].tolist()
+                    for sub_op in ham_chunks[label]:
                         labeled_pubs.append(
-                            (label, (ansatz_isas[label], [chunk], [theta_list]))
+                            (label, (ansatz_isas[label], [sub_op], [t_list]))
                         )
 
-                # Partition into batches, submit in Batch context
+                # 按 batch_size 拆分并行提交
                 batches = list(_partition(labeled_pubs, self.batch_size))
-                all_results = []  # will store (label, ExpectationResult)
+                pub_results: List[Tuple[str, float, float]] = []
 
-                t_q0 = time.monotonic()
+                t0 = time.monotonic()
                 with Batch(backend=backend):
                     for batch in batches:
                         pubs = [pub for (_, pub) in batch]
                         job  = estimator.run(pubs=pubs)
                         res  = job.result()
-                        # Pair each result with its label
+                        # 取回每条 PUB 的结果并标记 label
                         for (lbl, _), r in zip(batch, res):
-                            all_results.append((lbl, r))
-                t_q1 = time.monotonic()
+                            ev = float(r.data.evs[0])
+                            md = r.metadata or {}
+                            qdelay = None
+                            if md.get("queued_at") and md.get("started_at"):
+                                qdelay = (
+                                    datetime.fromisoformat(md["started_at"].replace("Z","+00:00"))
+                                    - datetime.fromisoformat(md["queued_at"].replace("Z","+00:00"))
+                                ).total_seconds()
+                            pub_results.append((lbl, ev, qdelay))
+                t1 = time.monotonic()
 
                 print(f"\n=== Iteration {it} ===")
-                # Aggregate energies per label and print
-                energy_acc: Dict[str, float] = {lbl: 0.0 for lbl in problems}
-                for lbl, r in all_results:
-                    ev = float(r.data.evs[0])
+                # 累加并打印
+                energy_acc = {lbl: 0.0 for lbl in problems}
+                for lbl, ev, qd in pub_results:
                     energy_acc[lbl] += ev
-
-                for label in problems:
-                    e_val = energy_acc[label]
-                    energies[label].append(e_val)
-
-                    # record quantum timing entry
-                    timeline[label].append({
+                for lbl in problems:
+                    e_val = energy_acc[lbl]
+                    energies[lbl].append(e_val)
+                    timeline[lbl].append({
                         "iter": it,
                         "stage": "quantum",
-                        "qpu_time_s": t_q1 - t_q0,
-                        "queue_delay_s": None
+                        "qpu_time_s": t1 - t0,
+                        "queue_delay_s": qd,
                     })
-                    print(f"  {label:10s} | E = {e_val:.6f}")
+                    print(f"  {lbl:10s} | E = {e_val:.6f}")
 
-                # 4) Finite-difference gradient update
-                for label in problems:
-                    base_e = energies[label][-1]
-                    grad = np.zeros_like(thetas[label])
+                # 4) finite-difference 梯度更新
+                for lbl in problems:
+                    base_e = energies[lbl][-1]
+                    grad   = np.zeros_like(thetas[lbl])
+                    # 对每个参数做 +eps 评估
                     for j in range(len(grad)):
-                        tp = thetas[label].copy()
+                        tp = thetas[lbl].copy()
                         tp[j] += self.eps
-                        # single-chunk batch for gradient
-                        pub_p = (ansatz_isas[label], ham_chunks[label], [tp.tolist()])
-                        # run all chunks for this perturbed theta
-                        res_pubs = estimator.run(pubs=[(ansatz_isas[label], [chunk], [tp.tolist()]) for chunk in ham_chunks[label]]).result()
-                        # sum their energies
-                        e_p = sum(float(r.data.evs[0]) for r in res_pubs)
+                        # 累加该 label 所有 chunk 的能量
+                        res_p = estimator.run(
+                            pubs=[(ansatz_isas[lbl], [sub_op], [tp.tolist()])
+                                  for sub_op in ham_chunks[lbl]]
+                        ).result()
+                        e_p = sum(float(r.data.evs[0]) for r in res_p)
                         grad[j] = (e_p - base_e) / self.eps
 
-                    thetas[label] -= self.lr * grad
-
-                    timeline[label].append({
+                    thetas[lbl] -= self.lr * grad
+                    timeline[lbl].append({
                         "iter": it,
                         "stage": "classical",
-                        "cpu_time_s": 0.0
+                        "cpu_time_s": 0.0,
                     })
 
-                # 5) Save intermediate files
-                for label in problems:
-                    # timeline JSON
-                    with open(f"{self.result_dir}/{label}_timeline.json", "w") as fp:
-                        json.dump(timeline[label], fp, indent=2)
-                    # energies CSV
+                for lbl in problems:
+                    with open(f"{self.result_dir}/{lbl}_timeline.json", "w") as fp:
+                        json.dump(timeline[lbl], fp, indent=2)
                     np.savetxt(
-                        f"{self.result_dir}/{label}_energies.csv",
-                        np.column_stack((np.arange(1, len(energies[label]) + 1),
-                                         energies[label])),
+                        f"{self.result_dir}/{lbl}_energies.csv",
+                        np.column_stack((np.arange(1, len(energies[lbl]) + 1),
+                                         energies[lbl])),
                         header="iter,energy", delimiter=",", comments=""
                     )
 
-        # 6) Package final results
         results: Dict[str, dict] = {}
-        for label in problems:
-            results[label] = {
-                "energies": energies[label],
-                "ground_energy": min(energies[label]) if energies[label] else None,
-                "parameters": thetas[label].tolist(),
-                "timeline": timeline[label],
+        for lbl in problems:
+            results[lbl] = {
+                "energies": energies[lbl],
+                "ground_energy": min(energies[lbl]) if energies[lbl] else None,
+                "parameters": thetas[lbl].tolist(),
+                "timeline": timeline[lbl],
             }
         return results
+
 
