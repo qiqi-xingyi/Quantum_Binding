@@ -63,7 +63,6 @@ class MultiVQEPipeline:
         backend = self._select_backend()
         results = {}
 
-        # 整个字典只开一个 Session
         with Session(backend=backend) as session:
             opts = EstimatorOptions()
             opts.default_shots = self.shots
