@@ -89,7 +89,7 @@ if __name__ == "__main__":
     solver = MultiVQEPipeline(
         service=service,
         shots=2048,
-        maxiter=50,
+        maxiter=100,
         opt_level=3,
     )
 

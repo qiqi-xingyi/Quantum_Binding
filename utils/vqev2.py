@@ -21,16 +21,28 @@ from qiskit_ibm_runtime import Session, EstimatorV2, Batch
 from qiskit_ibm_runtime.options import EstimatorOptions
 
 
+def _chunk_pauli(op: SparsePauliOp, size: int) -> List[SparsePauliOp]:
+    """Split a SparsePauliOp into ≤size‐term chunks."""
+    labels, coeffs = op.paulis.to_labels(), op.coeffs
+    return [
+        SparsePauliOp.from_list(
+            [(lbl, complex(c)) for lbl, c in zip(labels[i : i + size], coeffs[i : i + size])]
+        )
+        for i in range(0, len(labels), size)
+    ]
+
 def _partition(seq: List, size: int) -> Iterable[List]:
-    """Split a list into chunks of at most `size` items."""
+    """Partition a list into chunks of at most `size` elements."""
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
 
 
 class MultiVQEPipeline:
     """
-    Single-Session, multi-problem VQE using finite-difference BFGS,
-    batching PUBs to avoid oversized payload errors.
+    Single‐Session, multi‐problem VQE using finite‐difference BFGS.
+    Each Hamiltonian is chunked to avoid oversized payloads, and
+    all chunks across all problems are submitted in batches.
+    Energies are printed per iteration upon result retrieval.
     """
 
     def __init__(
@@ -42,6 +54,7 @@ class MultiVQEPipeline:
         lr: float = 0.1,
         eps: float = 1e-3,
         min_qubit_num: int = 10,
+        chunk_size: int = 500,
         batch_size: int = 50,
         result_dir: str = "results_vqe",
     ):
@@ -52,6 +65,7 @@ class MultiVQEPipeline:
         self.lr            = lr
         self.eps           = eps
         self.min_qubit_num = min_qubit_num
+        self.chunk_size    = chunk_size
         self.batch_size    = batch_size
         self.result_dir    = result_dir
         os.makedirs(result_dir, exist_ok=True)
@@ -64,17 +78,18 @@ class MultiVQEPipeline:
         )
 
     def _generate_pass_manager(self, backend):
+        # signature: generate_preset_pass_manager(optimization_level, backend=...)
         return generate_preset_pass_manager(
             optimization_level=self.opt_level,
-            backend=backend
+            backend=backend,
         )
 
     def run(self, problems: Dict[str, Tuple[SparsePauliOp, QuantumCircuit]]):
         backend = self._select_backend()
 
-        # Precompile circuits and initialize state
+        # 1) Precompile ansatz + layout and chunk each Hamiltonian
         ansatz_isas: Dict[str, QuantumCircuit] = {}
-        ham_isas:    Dict[str, SparsePauliOp]   = {}
+        ham_chunks:  Dict[str, List[SparsePauliOp]] = {}
         thetas:      Dict[str, np.ndarray]      = {}
         energies:    Dict[str, List[float]]     = {}
         timeline:    Dict[str, List[dict]]      = {}
@@ -83,93 +98,93 @@ class MultiVQEPipeline:
         for label, (ham, ansatz) in problems.items():
             isa = pm.run(ansatz)
             ansatz_isas[label] = isa
-            ham_isas[label]    = ham.apply_layout(isa.layout)
-            thetas[label]      = np.zeros(isa.num_parameters)
-            energies[label]    = []
-            timeline[label]    = []
+            h_isa = ham.apply_layout(isa.layout)
+            ham_chunks[label] = _chunk_pauli(h_isa, self.chunk_size)
+            thetas[label]     = np.zeros(isa.num_parameters)
+            energies[label]   = []
+            timeline[label]   = []
 
-        # Open single session and estimator
+        # 2) Open one Session & Estimator
         with Session(backend=backend) as session:
             opts = EstimatorOptions()
             opts.default_shots = self.shots
             estimator = EstimatorV2(mode=session, options=opts)
 
-            # Optimization loop
+            # 3) Optimization loop
             for it in range(1, self.maxiter + 1):
-                # Build all PUBs for this iteration
-                pubs = [
-                    (ansatz_isas[label], [ham_isas[label]], [thetas[label].tolist()])
-                    for label in problems
-                ]
+                # Build list of (label, pub) pairs for all chunks of all problems
+                labeled_pubs: List[Tuple[str, Tuple]] = []
+                for label in problems:
+                    theta_list = thetas[label].tolist()
+                    for chunk in ham_chunks[label]:
+                        labeled_pubs.append(
+                            (label, (ansatz_isas[label], [chunk], [theta_list]))
+                        )
 
-                # Partition PUBs to avoid oversized payload
-                batches = list(_partition(pubs, self.batch_size))
-                jobs: List = []
+                # Partition into batches, submit in Batch context
+                batches = list(_partition(labeled_pubs, self.batch_size))
+                all_results = []  # will store (label, ExpectationResult)
 
                 t_q0 = time.monotonic()
-                # Submit batches in parallel
                 with Batch(backend=backend):
                     for batch in batches:
-                        jobs.append(estimator.run(pubs=batch))
-                # Collect all results
-                pub_results = []
-                for job in jobs:
-                    for pub_res in job.result():
-                        pub_results.append(pub_res)
+                        pubs = [pub for (_, pub) in batch]
+                        job  = estimator.run(pubs=pubs)
+                        res  = job.result()
+                        # Pair each result with its label
+                        for (lbl, _), r in zip(batch, res):
+                            all_results.append((lbl, r))
                 t_q1 = time.monotonic()
 
                 print(f"\n=== Iteration {it} ===")
-                # Parse and print energies, record quantum timing
-                for idx, label in enumerate(problems):
-                    ev = float(pub_results[idx].data.evs[0])
-                    energies[label].append(ev)
+                # Aggregate energies per label and print
+                energy_acc: Dict[str, float] = {lbl: 0.0 for lbl in problems}
+                for lbl, r in all_results:
+                    ev = float(r.data.evs[0])
+                    energy_acc[lbl] += ev
 
-                    md = pub_results[idx].metadata or {}
-                    qdelay = None
-                    if md.get("queued_at") and md.get("started_at"):
-                        qdelay = (
-                            datetime.fromisoformat(md["started_at"].replace("Z","+00:00"))
-                            - datetime.fromisoformat(md["queued_at"].replace("Z","+00:00"))
-                        ).total_seconds()
+                for label in problems:
+                    e_val = energy_acc[label]
+                    energies[label].append(e_val)
 
+                    # record quantum timing entry
                     timeline[label].append({
                         "iter": it,
                         "stage": "quantum",
-                        "qpu_time_s": (t_q1 - t_q0),
-                        "queue_delay_s": qdelay,
+                        "qpu_time_s": t_q1 - t_q0,
+                        "queue_delay_s": None
                     })
+                    print(f"  {label:10s} | E = {e_val:.6f}")
 
-                    print(f"  {label:10s} | E = {ev:.6f}")
-
-                # Finite-difference gradient update per problem
-                for idx, label in enumerate(problems):
+                # 4) Finite-difference gradient update
+                for label in problems:
                     base_e = energies[label][-1]
-                    grad   = np.zeros_like(thetas[label])
-
-                    # Compute gradient via finite differences
+                    grad = np.zeros_like(thetas[label])
                     for j in range(len(grad)):
                         tp = thetas[label].copy()
                         tp[j] += self.eps
-                        pub_p = (ansatz_isas[label], [ham_isas[label]], [tp.tolist()])
-                        res_p = estimator.run(pubs=[pub_p]).result()[0]
-                        e_p   = float(res_p.data.evs[0])
+                        # single-chunk batch for gradient
+                        pub_p = (ansatz_isas[label], ham_chunks[label], [tp.tolist()])
+                        # run all chunks for this perturbed theta
+                        res_pubs = estimator.run(pubs=[(ansatz_isas[label], [chunk], [tp.tolist()]) for chunk in ham_chunks[label]]).result()
+                        # sum their energies
+                        e_p = sum(float(r.data.evs[0]) for r in res_pubs)
                         grad[j] = (e_p - base_e) / self.eps
 
                     thetas[label] -= self.lr * grad
 
-                    # Record classical step
                     timeline[label].append({
                         "iter": it,
                         "stage": "classical",
-                        "cpu_time_s": 0.0,
+                        "cpu_time_s": 0.0
                     })
 
-                # Save intermediate results
+                # 5) Save intermediate files
                 for label in problems:
-                    # Timeline JSON
+                    # timeline JSON
                     with open(f"{self.result_dir}/{label}_timeline.json", "w") as fp:
                         json.dump(timeline[label], fp, indent=2)
-                    # Energies CSV
+                    # energies CSV
                     np.savetxt(
                         f"{self.result_dir}/{label}_energies.csv",
                         np.column_stack((np.arange(1, len(energies[label]) + 1),
@@ -177,7 +192,7 @@ class MultiVQEPipeline:
                         header="iter,energy", delimiter=",", comments=""
                     )
 
-        # Package final results
+        # 6) Package final results
         results: Dict[str, dict] = {}
         for label in problems:
             results[label] = {
@@ -187,6 +202,4 @@ class MultiVQEPipeline:
                 "timeline": timeline[label],
             }
         return results
-
-
 
