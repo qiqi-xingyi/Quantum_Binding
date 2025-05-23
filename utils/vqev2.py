@@ -48,7 +48,7 @@ class MultiVQEPipeline:
     def __init__(
         self,
         service,
-        shots: int = 1024,
+        shots: int = 2000,
         opt_level: int = 3,
         maxiter: int = 50,
         lr: float = 0.1,
