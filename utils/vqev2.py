@@ -110,7 +110,6 @@ class MultiVQEPipeline:
     def run(self, problems: Dict[str, Tuple[SparsePauliOp, QuantumCircuit]]):
         backend = self._select_backend()
 
-        # 1) 预处理：去除闲置 qubit + 本地 ISA 编译 + 哈密顿量切片
         ansatz_isas: Dict[str, QuantumCircuit] = {}
         ham_chunks:  Dict[str, List[SparsePauliOp]] = {}
         thetas:      Dict[str, np.ndarray]      = {}
