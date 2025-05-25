@@ -98,8 +98,6 @@ if __name__ == "__main__":
     # Run all three VQEs in one session
     results = solver.run(problems)
 
-    ####################################
-
     # Save summaries
     for label, data in results.items():
         summary = {
