@@ -94,6 +94,7 @@ class MultiVQEPipeline:
                 delimiter=",",
                 comments=""
             )
+
             with open(os.path.join(self.result_dir, f"{label}_result.json"), "w") as f:
                 json.dump({
                     "energies": energy_list,
