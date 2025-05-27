@@ -40,7 +40,7 @@ def main():
     print("Ligand:", ligand_info)
 
     # 3) create PySCF Mole
-    pdb_path = "./data_set/data/2_benchmark_binidng_sites/1c5z/1c5z_Binding_mode.pdb"
+    pdb_path = "./data_set/data/benchmark_binidng_sites/1c5z/1c5z_Binding_mode.pdb"
 
     builder = PDBSystemBuilder(pdb_path, charge=1, spin=0, basis="sto3g")
     mol = builder.build_mole()

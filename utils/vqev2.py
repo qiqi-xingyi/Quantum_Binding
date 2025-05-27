@@ -8,12 +8,14 @@ import os
 import json
 import numpy as np
 from scipy.optimize import minimize
+from datetime import datetime
 from qiskit_ibm_runtime import Session, EstimatorV2 as Estimator
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
 class MultiVQEPipeline:
     """
     Run multiple VQEs sequentially, each in its own Session.
+    Records per-iteration quantum/classical timing in a timeline.
     problems: dict[label -> (qubit_operator, ansatz_circuit)]
     Returns dict[label -> (energy_list, optimal_parameters, ansatz_circuit)]
     """
@@ -57,18 +59,52 @@ class MultiVQEPipeline:
             ansatz_isa = pm.run(ansatz)
             # map Hamiltonian to compiled layout
             hamiltonian_isa = hamiltonian.apply_layout(ansatz_isa.layout)
-            # prepare storage
-            energy_list = []
 
-            # define cost function
+            energy_list = []
+            timeline = []
+
+            # cost function with quantum timing
             def cost_fn(params, circuit, ham, estimator):
-                pub = (circuit, [ham], [params])
+                bound = params.tolist()
+                pub = (circuit, [ham], [bound])
+
+                t0 = np.round(time.time(), 9)
                 job = estimator.run(pubs=[pub])
                 result = job.result()[0]
-                e = float(result.data.evs[0])
-                energy_list.append(e)
-                print(f"{label} iter {len(energy_list):3d} | E = {e:.6f}")
-                return e
+                t1 = np.round(time.time(), 9)
+
+                energy = float(result.data.evs[0])
+                energy_list.append(energy)
+
+                md = result.metadata or {}
+                queue_delay = None
+                if md.get("queued_at") and md.get("started_at"):
+                    start = datetime.fromisoformat(md["queued_at"].replace("Z","+00:00"))
+                    end = datetime.fromisoformat(md["started_at"].replace("Z","+00:00"))
+                    queue_delay = (end - start).total_seconds()
+
+                timeline.append({
+                    "iter": len(energy_list),
+                    "stage": "quantum",
+                    "qpu_time_s": t1 - t0,
+                    "queue_delay_s": queue_delay
+                })
+                print(f"{label} iter {len(energy_list):3d} | E = {energy:.6f}")
+                return energy
+
+            # callback with classical timing and timeline save
+            def cb(_xk):
+                t0 = np.round(time.time(), 9)
+                # classical work here (negligible)
+                t1 = np.round(time.time(), 9)
+                timeline.append({
+                    "iter": len(energy_list),
+                    "stage": "classical",
+                    "cpu_time_s": t1 - t0
+                })
+                # save timeline JSON
+                with open(f"{self.result_dir}/{label}_timeline.json", "w") as fp:
+                    json.dump(timeline, fp, indent=2)
 
             # initial parameters
             x0 = np.random.random(ansatz_isa.num_parameters)
@@ -83,10 +119,11 @@ class MultiVQEPipeline:
                     x0=x0,
                     args=(ansatz_isa, hamiltonian_isa, estimator),
                     method="COBYLA",
+                    callback=cb,
                     options={"maxiter": self.maxiter}
                 )
 
-            # save results per problem
+            # save energies CSV
             np.savetxt(
                 os.path.join(self.result_dir, f"{label}_energies.csv"),
                 np.column_stack((np.arange(1, len(energy_list)+1), energy_list)),
@@ -94,7 +131,11 @@ class MultiVQEPipeline:
                 delimiter=",",
                 comments=""
             )
+            # final timeline write
+            with open(os.path.join(self.result_dir, f"{label}_timeline.json"), "w") as fp:
+                json.dump(timeline, fp, indent=2)
 
+            # save result JSON
             with open(os.path.join(self.result_dir, f"{label}_result.json"), "w") as f:
                 json.dump({
                     "energies": energy_list,
@@ -105,6 +146,7 @@ class MultiVQEPipeline:
             results[label] = (energy_list, res.x, ansatz)
 
         return results
+
 
 
 
