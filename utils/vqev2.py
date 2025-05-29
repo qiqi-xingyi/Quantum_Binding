@@ -52,6 +52,8 @@ class MultiVQEPipeline:
 
     def run(self, problems):
         results = {}
+
+
         for label, (hamiltonian, ansatz) in problems.items():
             # select backend
             backend = self._select_backend(hamiltonian.num_qubits)
@@ -144,7 +146,12 @@ class MultiVQEPipeline:
                     "parameters": res.x.tolist()
                 }, f, indent=2)
 
-            results[label] = (energy_list, res.x, ansatz)
+            results[label] = {
+                'energies': energy_list,
+                'ground_energy': min(energy_list) if energy_list else None,
+                'parameters': res.x.tolist(),
+                'ansatz': ansatz
+            }
 
         return results
 
