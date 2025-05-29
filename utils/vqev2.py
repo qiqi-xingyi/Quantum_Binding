@@ -13,6 +13,7 @@ from datetime import datetime
 from qiskit_ibm_runtime import Session, EstimatorV2 as Estimator
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
+
 class MultiVQEPipeline:
     """
     Run multiple VQEs sequentially, each in its own Session.
