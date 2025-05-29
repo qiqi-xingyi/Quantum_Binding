@@ -87,7 +87,6 @@ if __name__ == "__main__":
         token=cfg.get("TOKEN")
     )
 
-    ####################################
 
     solver = MultiVQEPipeline(
         service=service,
