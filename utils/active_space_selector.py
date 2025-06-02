@@ -4,9 +4,6 @@
 # @Email : yzhan135@kent.edu
 # @File : active_space_selector.py
 
-
-# utils/active_space.py
-
 import numpy as np
 from pyscf import scf
 from typing import Tuple, List
