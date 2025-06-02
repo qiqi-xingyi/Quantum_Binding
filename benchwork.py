@@ -5,15 +5,16 @@
 # @File:benchwork.py
 
 import os
+import json
 from pyscf import scf
 from qiskit_nature.units import DistanceUnit
-from utils import BindingSystemBuilder
-from utils import  ActiveSpaceSelector
+
+from utils  import ActiveSpaceSelector
 from utils import QiskitProblemBuilder
-from utils import MultiVQEPipeline
+from utils   import MultiVQEPipeline
+from utils  import ConfigManager
+
 from qiskit_ibm_runtime import QiskitRuntimeService
-from utils.config_manager import ConfigManager
-import json
 
 def run_scf(mol):
     """Run RHF or ROHF SCF and return the converged mf object."""
@@ -27,60 +28,55 @@ def run_scf(mol):
     return mf
 
 if __name__ == "__main__":
-
-    # Fixed paths and settings
-    pdb_path       = "./data_set/1c5z/1c5z_Binding_mode.pdb"
-    plip_txt_path  = "./data_set/1c5z/1c5z_interaction.txt"
-    basis          = "sto3g"
-    result_dir     = "results_pipeline"
-
+    pdb_path      = "./data_set/1c5z/1c5z_Binding_mode.pdb"
+    plip_txt_path = "./data_set/1c5z/1c5z_interaction.txt"
+    basis         = "sto3g"
+    result_dir    = "results_pipeline"
     os.makedirs(result_dir, exist_ok=True)
 
-    # Build ligand, residue, complex molecules
+    from utils import BindingSystemBuilder
     builder = BindingSystemBuilder(
         pdb_path=pdb_path,
         plip_txt_path=plip_txt_path,
         basis=basis
     )
-    molecules = {
-        'ligand':  builder.get_ligand(),
-        'residue': builder.get_residue_system(),
-        'complex': builder.get_complex_system()
-    }
+    ligand_mol  = builder.get_ligand()
+    residue_mol = builder.get_residue_system()
+    complex_mol = builder.get_complex_system()
 
-    # SCF + active space selection + problem & ansatz construction
-    selector  = ActiveSpaceSelector(
+    mf_complex = run_scf(complex_mol)
+    print(f"Complex SCF converged energy = {mf_complex.e_tot:.12f}")
+
+    selector = ActiveSpaceSelector(
         freeze_occ_threshold=1.98,
         n_before_homo=1,
         n_after_lumo=1
     )
+    frozen_orbs, active_e, active_o, mo_start, active_list = selector.select_active_space(mf_complex)
+    print(f"Frozen core orbitals: {frozen_orbs}")
+    print(f"Active electrons = {active_e}, Active orbitals = {active_o}, mo_start = {mo_start}, active_orbitals = {active_list}")
 
     qp_builder = QiskitProblemBuilder(
         basis=basis,
         distance_unit=DistanceUnit.ANGSTROM,
-        result_dir=result_dir
+        result_dir=result_dir,
+        ansatz_type="uccsd",
+        reps=1
     )
 
     problems = {}
-    for label, mol in molecules.items():
+    for label, mol in [("ligand", ligand_mol), ("residue", residue_mol), ("complex", complex_mol)]:
         print(f"\n>> Preparing {label} <<")
-        mf = run_scf(mol)
-        frozen, active_e, mo_start, active_list = selector.select_active_space(mf)
-        print(f"  Frozen orbitals: {frozen}")
-        print(f"  Active e: {active_e}, orbitals start: {mo_start}, list: {active_list}")
-
         qop, ansatz = qp_builder.build(
             mol,
+            frozen_orbs,
             active_e,
-            len(active_list),
+            active_o,
             mo_start
         )
-
         problems[label] = (qop, ansatz)
-        print(f"  {label.capitalize()} Hamiltonian Terms: {len(qop)}")
-        print(f"  {label.capitalize()} Qubit Num: {qop.num_qubits}")
+        print(f"  {label} terms = {len(qop)}, qubits = {qop.num_qubits}")
 
-    # Initialize IBM Runtime service & VQE pipeline
     cfg = ConfigManager("config.txt")
     service = QiskitRuntimeService(
         channel='ibm_quantum',
@@ -88,17 +84,16 @@ if __name__ == "__main__":
         token=cfg.get("TOKEN")
     )
 
-
     solver = MultiVQEPipeline(
         service=service,
+        optimization_level=3,
         shots=2000,
         maxiter=100,
+        result_dir=result_dir
     )
 
-    # Run all three VQEs in one session
     results = solver.run(problems)
 
-    # Save summaries
     for label, data in results.items():
         summary = {
             'energies': data['energies'],
@@ -109,3 +104,4 @@ if __name__ == "__main__":
             json.dump(summary, f, indent=2)
 
     print("\nAll VQE runs complete. Check", result_dir, "for detailed outputs.")
+
