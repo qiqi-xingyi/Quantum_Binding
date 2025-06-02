@@ -4,23 +4,32 @@
 # @Email : yzhan135@kent.edu
 # @File:vqev2.py
 
+
 import os
-import time
 import json
+import time
+from datetime import datetime
+from typing import Dict, Tuple, List
+
 import numpy as np
 from scipy.optimize import minimize
-from datetime import datetime
+
 from qiskit_ibm_runtime import Session, EstimatorV2 as Estimator
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
-
 class MultiVQEPipeline:
     """
-    Run multiple VQEs sequentially, each in its own Session.
-    Records per-iteration quantum/classical timing in a timeline.
+    Sequentially run multiple VQEs, each in its own Session.
+    Record per-iteration quantum/classical timing in a timeline.
     problems: dict[label -> (qubit_operator, ansatz_circuit)]
-    Returns dict[label -> (energy_list, optimal_parameters, ansatz_circuit)]
+    Returns dict[label -> {
+        "energies": [...],
+        "ground_energy": float,
+        "parameters": [...],
+        "timeline": [...]
+    }]
     """
+
     def __init__(
         self,
         service,
@@ -51,110 +60,90 @@ class MultiVQEPipeline:
             optimization_level=self.optimization_level
         )
 
-    def run(self, problems):
-        results = {}
-
+    def run(self, problems: Dict[str, Tuple['SparsePauliOp', 'QuantumCircuit']]):
+        results: Dict[str, dict] = {}
 
         for label, (hamiltonian, ansatz) in problems.items():
-            # select backend
+            print(f"\nSolving problem: {label}")
             backend = self._select_backend(hamiltonian.num_qubits)
-            # compile ansatz
-            pm = self._generate_pass_manager(backend)
-            ansatz_isa = pm.run(ansatz)
-            # map Hamiltonian to compiled layout
-            hamiltonian_isa = hamiltonian.apply_layout(ansatz_isa.layout)
 
-            energy_list = []
-            timeline = []
+            pass_manager = self._generate_pass_manager(backend)
+            compiled_ansatz = pass_manager.run(ansatz)
+            compiled_hamiltonian = hamiltonian.apply_layout(compiled_ansatz.layout)
 
-            # cost function with quantum timing
-            def cost_fn(params, circuit, ham, estimator):
-                bound = params.tolist()
-                pub = (circuit, [ham], [bound])
+            energies: List[float] = []
+            timeline: List[dict] = []
 
-                t0 = np.round(time.time(), 9)
-                job = estimator.run(pubs=[pub])
-                result = job.result()[0]
-                t1 = np.round(time.time(), 9)
-
-                energy = float(result.data.evs[0])
-                energy_list.append(energy)
-
-                md = result.metadata or {}
-                queue_delay = None
-                if md.get("queued_at") and md.get("started_at"):
-                    start = datetime.fromisoformat(md["queued_at"].replace("Z","+00:00"))
-                    end = datetime.fromisoformat(md["started_at"].replace("Z","+00:00"))
-                    queue_delay = (end - start).total_seconds()
-
-                timeline.append({
-                    "iter": len(energy_list),
-                    "stage": "quantum",
-                    "qpu_time_s": t1 - t0,
-                    "queue_delay_s": queue_delay
-                })
-                print(f"{label} iter {len(energy_list):3d} | E = {energy:.6f}")
-                return energy
-
-            # callback with classical timing and timeline save
-            def cb(_xk):
-                t0 = np.round(time.time(), 9)
-                # classical work here (negligible)
-                t1 = np.round(time.time(), 9)
-                timeline.append({
-                    "iter": len(energy_list),
-                    "stage": "classical",
-                    "cpu_time_s": t1 - t0
-                })
-                # save timeline JSON
-                with open(f"{self.result_dir}/{label}_timeline.json", "w") as fp:
-                    json.dump(timeline, fp, indent=2)
-
-            # initial parameters
-            x0 = np.random.random(ansatz_isa.num_parameters)
-
-            # run VQE for this problem
             with Session(backend=backend) as session:
-                estimator = Estimator(mode=session)
-                estimator.options.default_shots = self.shots
+                opts = Estimator.Options()
+                opts.default_shots = self.shots
+                estimator = Estimator(mode=session, options=opts)
 
+                def cost_fn(params: np.ndarray) -> float:
+                    pub = (compiled_ansatz, [compiled_hamiltonian], [params.tolist()])
+                    job = estimator.run(pubs=[pub])
+                    result = job.result()[0]
+
+                    energy = float(result.data.evs[0])
+                    energies.append(energy)
+
+                    md = result.metadata or {}
+                    qpu_time = md.get("execution_time", 0.0)
+                    queue_delay = None
+                    if md.get("queued_at") and md.get("started_at"):
+                        queued_at  = datetime.fromisoformat(md["queued_at"].replace("Z", "+00:00"))
+                        started_at = datetime.fromisoformat(md["started_at"].replace("Z", "+00:00"))
+                        queue_delay = (started_at - queued_at).total_seconds()
+
+                    timeline.append({
+                        "iter": len(energies),
+                        "stage": "quantum",
+                        "qpu_time_s": qpu_time,
+                        "queue_delay_s": queue_delay
+                    })
+                    print(f"{label} iter {len(energies):3d} | E = {energy:.6f} | QPU time = {qpu_time:.3f}s | Queue delay = {queue_delay}")
+                    return energy
+
+                def callback(_xk: np.ndarray):
+                    t0 = time.time()
+                    t1 = time.time()
+                    timeline.append({
+                        "iter": len(energies),
+                        "stage": "classical",
+                        "cpu_time_s": t1 - t0
+                    })
+                    with open(f"{self.result_dir}/{label}_timeline.json", "w") as fp:
+                        json.dump(timeline, fp, indent=2)
+
+                x0 = np.random.random(compiled_ansatz.num_parameters)
                 res = minimize(
                     fun=cost_fn,
                     x0=x0,
-                    args=(ansatz_isa, hamiltonian_isa, estimator),
                     method="COBYLA",
-                    callback=cb,
+                    callback=callback,
                     options={"maxiter": self.maxiter}
                 )
 
-            # save energies CSV
             np.savetxt(
                 os.path.join(self.result_dir, f"{label}_energies.csv"),
-                np.column_stack((np.arange(1, len(energy_list)+1), energy_list)),
+                np.column_stack((np.arange(1, len(energies) + 1), energies)),
                 header="iter,energy",
                 delimiter=",",
-                comments=""
+                comments="",
+                fmt="%.6f"
             )
-            # final timeline write
             with open(os.path.join(self.result_dir, f"{label}_timeline.json"), "w") as fp:
                 json.dump(timeline, fp, indent=2)
 
-            # save result JSON
-            with open(os.path.join(self.result_dir, f"{label}_result.json"), "w") as f:
-                json.dump({
-                    "energies": energy_list,
-                    "ground_energy": min(energy_list) if energy_list else None,
-                    "parameters": res.x.tolist()
-                }, f, indent=2)
-
             results[label] = {
-                'energies': energy_list,
-                'ground_energy': min(energy_list) if energy_list else None,
-                'parameters': res.x.tolist(),
-                'ansatz': ansatz
+                "energies": energies,
+                "ground_energy": min(energies) if energies else None,
+                "parameters": res.x.tolist(),
+                "timeline": timeline
             }
 
         return results
+
 
 
 
