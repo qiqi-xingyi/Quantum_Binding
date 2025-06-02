@@ -4,9 +4,6 @@
 # @Email : yzhan135@kent.edu
 # @File : active_space_selector.py
 
-import numpy as np
-from pyscf import scf
-from pyscf import mcscf
 
 import numpy as np
 from pyscf import scf, mcscf
