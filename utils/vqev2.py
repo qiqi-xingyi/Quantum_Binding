@@ -19,7 +19,7 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
 class MultiVQEPipeline:
     """
-    Sequentially run multiple VQEs, each in its own Session.
+    Sequentially run VQE for multiple problems, each in its own Session.
     Record per-iteration quantum/classical timing in a timeline.
     problems: dict[label -> (qubit_operator, ansatz_circuit)]
     Returns dict[label -> {
@@ -48,6 +48,9 @@ class MultiVQEPipeline:
         os.makedirs(result_dir, exist_ok=True)
 
     def _select_backend(self, required_qubits: int):
+        """
+        Select a least-busy IBMQ backend with at least `required_qubits`.
+        """
         return self.service.least_busy(
             simulator=False,
             operational=True,
@@ -55,12 +58,25 @@ class MultiVQEPipeline:
         )
 
     def _generate_pass_manager(self, backend):
+        """
+        Generate a preset pass manager for compiling circuits.
+        """
         return generate_preset_pass_manager(
             target=backend.target,
             optimization_level=self.optimization_level
         )
 
     def run(self, problems: Dict[str, Tuple['SparsePauliOp', 'QuantumCircuit']]):
+        """
+        Run VQE sequentially for each (label, (qubit_op, ansatz)) in `problems`.
+        Returns:
+            results: { label: {
+                "energies": [...],
+                "ground_energy": float,
+                "parameters": [...],
+                "timeline": [...]
+            } }
+        """
         results: Dict[str, dict] = {}
 
         for label, (hamiltonian, ansatz) in problems.items():
@@ -80,6 +96,11 @@ class MultiVQEPipeline:
                 estimator = Estimator(mode=session, options=opts)
 
                 def cost_fn(params: np.ndarray) -> float:
+                    """
+                    Cost function for a given parameter vector `params`.
+                    Runs the compiled ansatz and measures expectation of compiled_hamiltonian.
+                    Records energy, QPU execution time, and queue delay.
+                    """
                     pub = (compiled_ansatz, [compiled_hamiltonian], [params.tolist()])
                     job = estimator.run(pubs=[pub])
                     result = job.result()[0]
@@ -105,6 +126,9 @@ class MultiVQEPipeline:
                     return energy
 
                 def callback(_xk: np.ndarray):
+                    """
+                    Called after each optimization step. Records a classical-timing entry.
+                    """
                     t0 = time.time()
                     t1 = time.time()
                     timeline.append({
@@ -112,6 +136,7 @@ class MultiVQEPipeline:
                         "stage": "classical",
                         "cpu_time_s": t1 - t0
                     })
+                    # Write intermediate timeline to disk
                     with open(f"{self.result_dir}/{label}_timeline.json", "w") as fp:
                         json.dump(timeline, fp, indent=2)
 
@@ -124,6 +149,7 @@ class MultiVQEPipeline:
                     options={"maxiter": self.maxiter}
                 )
 
+            # After optimization, write energies.csv and final timeline.json
             np.savetxt(
                 os.path.join(self.result_dir, f"{label}_energies.csv"),
                 np.column_stack((np.arange(1, len(energies) + 1), energies)),
