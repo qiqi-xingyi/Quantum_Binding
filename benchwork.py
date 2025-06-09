@@ -11,18 +11,17 @@ from qiskit_nature.units import DistanceUnit
 
 from utils.fragment_molecule import (
     build_complex_mol,
-    build_fragment_ghost_mol
+    build_fragment_ghost_mol,
 )
-from utils    import ActiveSpaceSelector
-from utils    import QiskitProblemBuilder
-from utils    import MultiVQEPipeline
-from qiskit_ibm_runtime       import QiskitRuntimeService
-from utils.config_manager     import ConfigManager
+from utils import ActiveSpaceSelector
+from utils import QiskitProblemBuilder
+from utils import MultiVQEPipeline
+from qiskit_ibm_runtime import QiskitRuntimeService
+from utils.config_manager import ConfigManager
+from utils import BindingSystemBuilder  # your existing helper
 
+# ---------------------------------------------------------------------
 def run_scf(mol):
-    """
-    Run RHF or ROHF SCF on a pyscf Molecule and return the converged SCF object.
-    """
     if mol.spin == 0:
         mf = scf.RHF(mol)
     else:
@@ -34,105 +33,64 @@ def run_scf(mol):
 
 
 if __name__ == "__main__":
-    # Fixed paths and settings
-    pdb_path      = "./data_set/1c5z/1c5z_Binding_mode.pdb"
-    plip_txt_path = "./data_set/1c5z/1c5z_interaction.txt"
-    basis         = "sto3g"
-    result_dir    = "results_pipeline"
+    pdb_path = "./data_set/1c5z/1c5z_Binding_mode.pdb"
+    plip_path = "./data_set/1c5z/1c5z_interaction.txt"
+    basis = "sto3g"
+    result_dir = "results_pipeline"
     os.makedirs(result_dir, exist_ok=True)
 
-    # 1) Build ligand, residue, complex PDB-based objects
-    from utils import BindingSystemBuilder
-    builder = BindingSystemBuilder(
-        pdb_path=pdb_path,
-        plip_txt_path=plip_txt_path,
-        basis=basis
-    )
-    ligand_pdb  = builder.get_ligand()
+    # Build PDB-like objects
+    builder = BindingSystemBuilder(pdb_path, plip_path, basis)
+    ligand_pdb = builder.get_ligand()
     residue_pdb = builder.get_residue_system()
     complex_pdb = builder.get_complex_system()
 
-    # 2) Build PySCF Molecule objects: complex, ligand_ghost, residue_ghost
+    # Compute atom index lists
+    complex_atoms = complex_pdb.atom
+    ligand_set = set(ligand_pdb.atom)
+    ligand_idx = [i for i, at in enumerate(complex_atoms) if at in ligand_set]
+    residue_idx = [i for i in range(len(complex_atoms)) if i not in ligand_idx]
+
+    # Build PySCF Mole objects
     complex_mol = build_complex_mol(complex_pdb, basis)
+    ligand_ghost = build_fragment_ghost_mol(complex_pdb, basis, "ligand", ligand_idx, residue_idx)
+    residue_ghost = build_fragment_ghost_mol(complex_pdb, basis, "residue", ligand_idx, residue_idx)
 
-    # Obtain atom index lists for ligand vs residue in the complex
-    ligand_atom_indices  = builder.ligand_atom_indices
-    residue_atom_indices = builder.residue_atom_indices
-
-    ligand_ghost_mol  = build_fragment_ghost_mol(
-        complex_pdb, basis, "ligand", ligand_atom_indices, residue_atom_indices
-    )
-    residue_ghost_mol = build_fragment_ghost_mol(
-        complex_pdb, basis, "residue", ligand_atom_indices, residue_atom_indices
-    )
-
-    # 3) Run SCF on complex and select active space
+    # SCF on complex and choose active space
     mf_complex = run_scf(complex_mol)
-    print(f"Complex SCF converged energy = {mf_complex.e_tot:.12f}")
+    selector = ActiveSpaceSelector(1.98, 1, 1)
+    frozen, active_e, active_o, mo_start, act_orbs = selector.select_active_space(mf_complex)
 
-    selector = ActiveSpaceSelector(
-        freeze_occ_threshold=1.98,
-        n_before_homo=1,
-        n_after_lumo=1
-    )
-    frozen_orbs, active_e, active_o, mo_start, active_list = selector.select_active_space(mf_complex)
-    print(f"Frozen core orbitals: {frozen_orbs}")
-    print(f"Active electrons = {active_e}, Active orbitals = {active_o}, mo_start = {mo_start}, active_orbitals = {active_list}")
-
-    # 4) Build qubit problems for ligand_ghost, residue_ghost, and complex
+    # Build qubit problems
     qp_builder = QiskitProblemBuilder(
         basis=basis,
         distance_unit=DistanceUnit.ANGSTROM,
         result_dir=result_dir,
         ansatz_type="uccsd",
-        reps=1
     )
 
     problems = {}
-    for label, pyscf_mol in [
-        ("ligand", ligand_ghost_mol),
-        ("residue", residue_ghost_mol),
-        ("complex", complex_mol)
-    ]:
-        print(f"\n>> Preparing {label} <<")
-        qop, ansatz = qp_builder.build(
-            pyscf_mol,
-            frozen_orbs,
-            active_e,
-            active_o,
-            mo_start
-        )
+    for label, mol in [("ligand", ligand_ghost), ("residue", residue_ghost), ("complex", complex_mol)]:
+        qop, ansatz = qp_builder.build(mol, frozen, active_e, active_o, mo_start)
         problems[label] = (qop, ansatz)
-        print(f"  {label} terms = {len(qop)}, qubits = {qop.num_qubits}")
+        print(f"{label}: terms={len(qop)}, qubits={qop.num_qubits}")
 
-    # 5) Initialize IBMQ Runtime service & VQE pipeline
+    # IBM Runtime service
     cfg = ConfigManager("config.txt")
     service = QiskitRuntimeService(
-        channel='ibm_quantum',
+        channel="ibm_quantum",
         instance=cfg.get("INSTANCE"),
-        token=cfg.get("TOKEN")
+        token=cfg.get("TOKEN"),
     )
 
-    solver = MultiVQEPipeline(
-        service=service,
-        optimization_level=3,
-        shots=2000,
-        maxiter=100,
-        result_dir=result_dir
-    )
+    pipeline = MultiVQEPipeline(service, shots=2000, maxiter=100, result_dir=result_dir)
+    results = pipeline.run(problems)
 
-    # 6) Run VQE for all three problems in sequence
-    results = solver.run(problems)
-
-    # 7) Save summary JSON for each problem
+    # summaries
     for label, data in results.items():
-        summary = {
-            'energies': data['energies'],
-            'ground_energy': data['ground_energy']
-        }
-        summary_path = os.path.join(result_dir, f"{label}_summary.json")
-        with open(summary_path, 'w') as f:
+        summary = {"energies": data["energies"], "ground_energy": data["ground_energy"]}
+        with open(os.path.join(result_dir, f"{label}_summary.json"), "w") as f:
             json.dump(summary, f, indent=2)
 
-    print("\nAll VQE runs complete. Check", result_dir, "for detailed outputs.")
+    print("All VQE jobs done — results stored in", result_dir)
 
