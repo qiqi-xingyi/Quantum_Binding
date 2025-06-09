@@ -87,6 +87,7 @@ class ActiveSpaceSelector:
         self.n_after_lumo         = n_after_lumo
 
 
+
     def select_active_space(
         self,
         mf: scf.hf.SCF
