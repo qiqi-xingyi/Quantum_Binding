@@ -32,7 +32,6 @@ def run_scf(mol):
     return mf
 
 
-
 if __name__ == "__main__":
     pdb_path = "./data_set/1c5z/1c5z_Binding_mode.pdb"
     plip_path = "./data_set/1c5z/1c5z_interaction.txt"
