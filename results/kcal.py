@@ -11,7 +11,7 @@ import json
 HARTREE_TO_KCAL_MOL = 627.509469
 
 # Directory containing the summary JSON files
-result_dir = "results_5.29/results"
+result_dir = "results_5.30/results"
 
 # Expected summary filenames (without extension)
 labels = ["ligand", "residue", "complex"]
